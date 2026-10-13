@@ -131,10 +131,8 @@ describe("CythonExtensionInspectionService", () => {
 
   it("honors cancellation between primitive observations", async () => {
     const controller = new AbortController();
-    const analysis = new RecordingAnalysis(
-      nameInventory,
-      stringInventory,
-      () => controller.abort(),
+    const analysis = new RecordingAnalysis(nameInventory, stringInventory, () =>
+      controller.abort(),
     );
     const result = await new CythonExtensionInspectionService().inspect(
       analysis,

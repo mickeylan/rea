@@ -46,14 +46,21 @@ export class CythonExtensionInspectionService {
     if (isAborted(options?.signal))
       return err(new AnalysisCancelledError(OPERATION));
 
-    const stringsExecution = await analysis.execute("list_strings", {}, options);
+    const stringsExecution = await analysis.execute(
+      "list_strings",
+      {},
+      options,
+    );
     if (!stringsExecution.ok) return stringsExecution;
     if (isAborted(options?.signal))
       return err(new AnalysisCancelledError(OPERATION));
 
     const names = parseInventory("list_names", namesExecution.value.result);
     if (!names.ok) return names;
-    const strings = parseInventory("list_strings", stringsExecution.value.result);
+    const strings = parseInventory(
+      "list_strings",
+      stringsExecution.value.result,
+    );
     if (!strings.ok) return strings;
 
     const result = inspectCythonExtensionInventories({
