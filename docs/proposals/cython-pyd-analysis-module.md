@@ -576,99 +576,47 @@ for (const pyd of testCases) {
 
 ---
 
-## 附录：相关文件列表
+## 当前实现状态
 
-```
-✅ 已创建的文件:
-  src/cython/index.ts             ✅ 类型定义和工具函数（v1.0）
+当前只保留经过测试的、无副作用的领域投影：
 
-当前状态:
-  Phase 1 完成 - 基础框架和类型系统
-  Phase 2-4 待实现 - 需要完整集成
+- `src/domain/cythonExtension.ts`
+  - 精确识别 `PyInit_*` 初始化符号；
+  - 保留限定名称和源码路径字符串观察；
+  - 识别 `__pyx_` / `__Pyx_` Cython 标记；
+  - 从精确 CPython API 符号产生有界类型提示；
+  - 明确报告覆盖范围、未知项和限制。
+- `src/cython.test.ts`
+  - 覆盖正例、负例、完整与不完整清单，以及不把字符串升级为源码事实的约束。
 
-待完成:
-  ⏳ Ghidra 会话封装
-  ⏳ CLI 命令注册
-  ⏳ MCP 服务器集成
-  ⏳ 工具契约注册
-  ⏳ 完整测试
-```
+早期通过子进程再次调用 `rea` 的 `src/cython/ghidra.ts`、推测性代码生成器和独立脚本已经移除。它们无法复用现有 `BinarySession`，也不能正确保留 Evidence、取消和清理语义。
 
----
+## 尚未集成的能力
 
-## 实现状态
+| 能力             | 状态   | 要求                                                                       |
+| ---------------- | ------ | -------------------------------------------------------------------------- |
+| 应用工作流       | 待实现 | 通过 `AnalysisOperationPort` 在同一会话读取 `list_names` 与 `list_strings` |
+| CLI 命令         | 待实现 | 复用 `runDirectAnalysis`、provider 选择、取消和清理                        |
+| MCP 工具         | 待实现 | 添加严格契约、Effects、Evidence 和会话准入                                 |
+| 真实 Ghidra 验证 | 待实现 | 使用可再分发 `.pyd` fixture 验证 Windows 清单覆盖                          |
+| 函数级深入分析   | 后续   | 由调用者从返回候选中明确选择函数，再使用现有函数分析原语                   |
 
-### Phase 1: 基础框架 ✅ 完成 (v1.0)
+## 建议的第一版边界
 
-| 任务         | 状态 | 文件          |
-| ------------ | ---- | ------------- |
-| 创建目录结构 | ✅   | `src/cython/` |
-| 类型系统     | ✅   | `index.ts`    |
-| 模式识别     | ✅   | `index.ts`    |
-| 工具函数     | ✅   | `index.ts`    |
+第一版只回答：
 
-**已实现的功能:**
+1. 是否观察到 CPython 扩展初始化符号；
+2. 是否观察到 Cython 标记；
+3. 哪些限定名称和源码路径字符串被观察到；
+4. 哪些 CPython API 符号提供了局部类型提示；
+5. 检查了多少名称和字符串，覆盖是否完整。
 
-- `extractModuleName()` - 从 PyInit_* 提取模块名
-- `isPythonModulePath()` - 检测 Python 模块路径
-- `isClassName()` - 检测类名
-- `isSourcePath()` - 检测源码路径泄露
-- `inferPythonTypeFromApiCall()` - 从 CPython API 推断类型
-- `parseQualifiedName()` - 解析全限定名
-
-### Phase 2-4: 完整实现 📋 待开始
-
-| 任务            | 状态 |
-| --------------- | ---- |
-| Ghidra 会话封装 | 📋   |
-| CLI 命令注册    | 📋   |
-| MCP 服务器集成  | 📋   |
-| 单元测试        | 📋   |
-| 集成测试        | 📋   |
-
----
-
-## 当前使用方式
-
-```typescript
-// 导入模块
-import {
-  extractModuleName,
-  inferPythonTypeFromApiCall,
-  CYTHON_STRING_PATTERNS,
-} from "./cython/index.js";
-
-// 从 PyInit_* 提取模块名
-const moduleName = extractModuleName("PyInit_TE_Prompt_Text");
-// => 'TE_Prompt_Text'
-
-// 从 CPython API 调用推断 Python 类型
-const type = inferPythonTypeFromApiCall("PyUnicode_FromString");
-// => 'str'
-
-// 使用模式匹配
-const isEntryPoint = CYTHON_STRING_PATTERNS.initPattern.test(
-  "PyInit_TE_Prompt_Text",
-);
-// => true
-```
-
----
+第一版不生成 Python 源码，不声明字符串代表类或方法，不推断完整函数签名，也不把缺失标记解释为“不是 Cython”。
 
 ## 下一步计划
 
-1. **完善 Ghidra 会话封装**
-   - 实现 `GhidraSession` 接口连接 REA Ghidra Provider
-   - 实现 `CythonAnalyzer` 核心分析类
-
-2. **集成到 REA CLI**
-   - 在 `cliCommandNames.ts` 注册新命令
-   - 实现命令处理器
-
-3. **集成到 MCP 服务器**
-   - 在 `composition/` 中注册新工具
-   - 添加到 `toolCatalog`
-
-4. **测试验证**
-   - 使用 `TE_Prompt_Text.pyd` 进行测试
-   - 验证输出格式正确
+1. 在 application 层实现基于 `AnalysisOperationPort` 的只读工作流；
+2. 使用现有 session 同次读取 `list_names` 和 `list_strings`；
+3. 创建 derived Evidence，保留两次原语调用的 provider、profile、locations 和 limitations；
+4. 添加 CLI/MCP 合约与边界测试；
+5. 完成真实 Windows Ghidra 验证后再宣传 `.pyd` 检查能力。
