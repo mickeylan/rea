@@ -80,7 +80,7 @@ export const CYTHON_STRING_PATTERNS = {
   classPattern: /^[A-Z][a-zA-Z0-9]*Node[A-Z]?[a-zA-Z0-9]*$/,
 
   // 源码路径: C:\path\to\file.py
-  sourcePathPattern: /^([A-Z]:\\[\w\\\/.]+|\/[\w\/\.]+)\.(py|pyx|c)$/i,
+  sourcePathPattern: /^([A-Z]:\\[\w\\/.]+|\/[\w/\.]+)\.(py|pyx|c)$/i,
 
   // API 路由: /te_xxx/yyy
   apiRoutePattern: /^\/[a-z_][a-z0-9_]*(?:\/[a-z_][a-z0-9_]*)*$/,
@@ -182,3 +182,26 @@ export function inferPythonTypeFromApiCall(apiCall: string): PythonType {
 export function isPythonObjectType(typeName: string): boolean {
   return typeName in CPYTHON_TYPE_MAP;
 }
+
+// ============================================================================
+// Ghidra 会话封装
+// ============================================================================
+
+export { createGhidraSession } from "./ghidra.js";
+export type {
+  GhidraSession,
+  SearchResult,
+  FunctionInfo,
+  Reference,
+} from "./ghidra.js";
+
+// ============================================================================
+// Cython 分析器
+// ============================================================================
+
+export {
+  createCythonAnalyzer,
+  analyzeAndGenerate,
+  generatePythonCode,
+} from "./analyzer.js";
+export type { AnalysisResult, FunctionAnalysis } from "./analyzer.js";
