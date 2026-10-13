@@ -14,6 +14,7 @@ interface ToolAnnotations {
 /** One validated example request for an MCP tool contract. */
 export interface ToolExample {
   readonly title: string;
+  readonly description?: string;
   readonly input: Readonly<Record<string, JsonValue>>;
 }
 
@@ -35,6 +36,7 @@ export const TOOL_KINDS = [
   "runtime-provider",
   "application",
   "session",
+  "cython-analyzer",
 ] as const;
 
 /** Adapter family responsible for implementing a public MCP tool. */
