@@ -89,6 +89,14 @@ Derived flow:
 
 The exact 26-argument internal C signature reported by Ghidra is generated implementation detail; it is not proof of the public Python signature.
 
+### Normalization helpers
+
+A retained-session analysis of the helper boundaries established:
+
+- `_build_system_prompt` uses wrapper `FUN_180003830` (829 bytes) and body `FUN_180003b70` (1,860 bytes). The wrapper accepts two exact positional values and requires keyword-only `output_language`; the retained positional-name observation is `base_prompt`. The body formats and concatenates Python strings and conditionally tests the supplied objects. Exact language templates remain module-initialized globals.
+- `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one observed argument, `seed_value`. It applies `PyNumber_Long`, performs a rich comparison against a retained global threshold, and contains exception matching/restoration. This establishes integer coercion and a threshold/sentinel branch, but not the threshold value or the value chosen by that branch.
+- `enable_thinking` at the queried reference belongs to nested `_create_qwen38_text_handler.qwen38_formatter`, `FUN_18000cdc0` (1,113 bytes). Its observed call inputs include `reasoning_effort`, `enable_thinking`, `preserve_thinking`, and `formatter`. The body constructs a keyword dictionary and invokes the retained formatter callable. This is Qwen 3.8 formatting behavior, not proof of the top-level input default.
+
 ## Local model route
 
 ### Entry and configuration
@@ -103,7 +111,7 @@ The `_request_local` wrapper resolves to `FUN_180021e70`, range `0x180021e70-0x1
 - `context_length`
 - `max_output_tokens`
 
-It dispatches to `FUN_180022710`, a 5,596-byte local-request body.
+It dispatches to `FUN_180022710`, a 5,596-byte local-request body. `_local_config` resolves to `FUN_1800216f0` (1,919 bytes), accepts exactly three values corresponding to the retained observations `model`, `mmproj`, and `context_length`, and returns a newly constructed dictionary. Its body coerces the context value with `PyNumber_Long`, applies a retained lower-bound comparison, and inserts both fixed and derived settings. The exact lower bound and dictionary-key mapping remain unresolved global objects.
 
 A retained-session xref pass (one import and one completed Ghidra analysis for all queries) linked the configuration observations more precisely:
 
