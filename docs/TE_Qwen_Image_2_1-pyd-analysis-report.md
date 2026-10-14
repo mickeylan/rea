@@ -76,11 +76,11 @@ The Cython string table is initialized by `FUN_18002f810`. Its 633 static entrie
         ),
         "api_base_url": (
             "STRING",
-            {"default": DEFAULT_API_BASE_URL, "multiline": False},
+            {"default": "https://teynex.com", "multiline": False},
         ),
         "model": (
             "STRING",
-            {"default": DEFAULT_API_MODEL, "multiline": False},
+            {"default": "deepseek-v4.1-flash", "multiline": False},
         ),
         "文生图PE模型": (
             _official_pe_choices(),
@@ -104,7 +104,7 @@ The Cython string table is initialized by `FUN_18002f810`. Its 633 static entrie
         "最大生成token": (
             "INT",
             {
-                "default": DEFAULT_MAX_OUTPUT_TOKENS,
+                "default": 4096,
                 "min": 256,
                 "max": 32768,
                 "step": 256,
@@ -114,7 +114,7 @@ The Cython string table is initialized by `FUN_18002f810`. Its 633 static entrie
         "上下文长度": (
             "INT",
             {
-                "default": DEFAULT_CONTEXT_LENGTH,
+                "default": 8192,
                 "min": 1024,
                 "max": 327680,
                 "step": 256,
@@ -155,7 +155,9 @@ The Cython string table is initialized by `FUN_18002f810`. Its 633 static entrie
 }
 ```
 
-The optional-name tuple is observed as exactly `图片`, `图片2`, …, `图片8`. The representation above preserves calls to `_official_pe_choices`, `_llm_file_choices`, `DEFAULT_API_BASE_URL`, `DEFAULT_API_MODEL`, `DEFAULT_MAX_OUTPUT_TOKENS`, and `DEFAULT_CONTEXT_LENGTH` because their runtime return/value objects were not executed. All other shown keys, choices, flags, bounds, steps, and literal defaults are statically established.
+The optional-name tuple is observed as exactly `图片`, `图片2`, …, `图片8`. Module initialization statically assigns `DEFAULT_API_BASE_URL = "https://teynex.com"`, `DEFAULT_API_MODEL = "deepseek-v4.1-flash"`, `DEFAULT_MAX_OUTPUT_TOKENS = 4096`, and `DEFAULT_CONTEXT_LENGTH = 8192`; the schema above substitutes those observed values.
+
+`_official_pe_choices()` calls `folder_paths.get_filename_list("text_encoders")`, converts the result to a list, sorts it, and returns `['（请把模型放到 models/text_encoders）']` when the list is empty. `_llm_file_choices(is_mmproj)` uses `folder_paths.models_dir/LLM`, integrates an existing `folder_paths.folder_names_and_paths` registration where applicable, recognizes `.gguf`, `.safetensors`, `.bin`, `.pth`, `.pt`, and `folder_paths.supported_pt_extensions`, and filters names based on the `mmproj` marker. It also recognizes multipart GGUF names through `_GGUF_SHARD_PATTERN` and normalizes shard choices. The exact ordering/deduplication details of every fallback branch remain derived rather than runtime-verified.
 
 The user selected static-only analysis, so the target module was not imported. This also corrects the earlier candidate list: `temperature` is retained elsewhere in the module but is not inserted by this `INPUT_TYPES` body.
 
@@ -264,7 +266,7 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 The following remain intentionally unresolved:
 
 - API request construction, authentication, and provider-specific response handling.
-- Runtime values of the named `DEFAULT_*` globals and the two dynamic choice helpers used by `INPUT_TYPES`.
+- Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact public `enhance_prompt` signature and return tuple.
 - Exact model-family match strings returned by `_detect_model_family`.
 - Complete local model constructor arguments and cache identity.
