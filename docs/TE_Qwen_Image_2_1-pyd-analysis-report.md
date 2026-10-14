@@ -105,6 +105,16 @@ The `_request_local` wrapper resolves to `FUN_180021e70`, range `0x180021e70-0x1
 
 It dispatches to `FUN_180022710`, a 5,596-byte local-request body.
 
+A retained-session xref pass (one import and one completed Ghidra analysis for all queries) linked the configuration observations more precisely:
+
+- `model` is referenced by the local configuration/body (`FUN_1800216f0`), `_request_local` wrapper (`FUN_180021e70`), `enhance_prompt` wrapper (`FUN_180025e90`), and two additional model-handling functions.
+- `mmproj` is referenced by `FUN_1800216f0`, `FUN_180021e70`, and `FUN_180025e90`.
+- `context_length` is referenced by `FUN_1800216f0` and `FUN_180021e70`.
+- `max_output_tokens` is referenced by `FUN_180021e70` and one additional request function.
+- `output_language`, `seed_value`, and `enable_thinking` each resolve to separate helper-function boundaries.
+
+Several duplicate defined strings (`prompt`, `image`, `temperature`) had no direct Ghidra reference at the queried addresses. That is an observed absence of references to those exact data objects, not proof that the settings are unused; Cython may reference a different duplicate object or an initialized global slot.
+
 ### Model loading and reuse
 
 `TEQwenImage21LocalStorage.load` has wrapper `FUN_18000ffc0` and 11,228-byte body `FUN_180010230`. Observed strings establish lifecycle branches for:
