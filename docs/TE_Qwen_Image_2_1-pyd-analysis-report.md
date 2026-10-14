@@ -66,6 +66,12 @@ The target retains the following values near the schema and execution paths:
 
 These observations do **not** establish exact nesting, order, defaults, numeric bounds, dropdown choices, or whether each field is required or optional. Recovering those facts requires resolving the module-initialized global objects referenced by `FUN_180023f00` or observing the returned schema in a controlled Python runtime.
 
+### Static reconstruction boundary
+
+A focused pseudocode pass confirmed that `FUN_180023f00` repeatedly constructs two-element `(type-or-choice, options)` tuples and inserts them into a parent dictionary. Boolean option dictionaries contain observed true/false defaults, while several other options are produced by helper calls rather than retained literals. However, the keys, type objects, choices, and defaults reach this function through module-owned `DAT_18005...` global slots. The PE image does not retain those slots as direct string references; Cython populates them during module initialization.
+
+The current analysis therefore preserves the fields above as candidates instead of assigning each global slot a guessed Python value. The user selected static-only analysis, so the target module was not imported to materialize those objects.
+
 ## `enhance_prompt`
 
 The string `enhance_prompt` at `0x18003b050` has five references. One resolves inside wrapper `FUN_180025e90`, range `0x180025e90-0x180026c60`, 3,537 bytes. The wrapper performs positional/keyword parsing and then dispatches to `FUN_180027200`.
@@ -108,7 +114,7 @@ It dispatches to `FUN_180022710`, a 5,596-byte local-request body.
 - `TE Qwen Image 2.1 local model unloading loaded=%s`
 - `TE Qwen Image 2.1 local model unloaded`
 
-The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. This supports a derived model-cache lifecycle: reuse aligned loaded state, otherwise unload/reset and create a new local model. Exact cache keys and all constructor arguments remain unknown.
+The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. It also stores a constructed three-element tuple into the storage object and later reads that state for reuse checks. This supports a derived model-cache lifecycle: reuse aligned loaded state, otherwise unload/reset and create a new local model. Exact tuple member identities, cache keys, and all constructor arguments remain unknown.
 
 ### Family selection
 
