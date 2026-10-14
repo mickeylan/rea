@@ -42,35 +42,122 @@ Observed call path:
 
 The body constructs Python dictionaries, lists, and tuples using `PyDict_New`, `PyDict_SetItem`, `PyList_New`, `PyList_SetItem`, `PyTuple_New`, and `PyTuple_SetItem`. This establishes that `INPUT_TYPES` dynamically builds a nested ComfyUI-style schema rather than returning one retained literal object.
 
-### Input-name and type observations
+### Reconstructed schema
 
-The target retains the following values near the schema and execution paths:
+The Cython string table is initialized by `FUN_18002f810`. Its 633 static entries map sequentially to the module global slots consumed by `FUN_180023f00`. Resolving that owner representation recovered the following schema without importing the target:
 
-| Observation                           | Static interpretation                                   |
-| ------------------------------------- | ------------------------------------------------------- |
-| `required`                            | A required input group exists.                          |
-| `STRING`                              | At least one string-typed input exists.                 |
-| `BOOLEAN`                             | At least one boolean input exists.                      |
-| `IMAGE`                               | An image input/output type is referenced.               |
-| `prompt`                              | Primary prompt input candidate.                         |
-| `image` / `images`                    | Image input candidates.                                 |
-| `model`, `pe_model`                   | Model-selection candidates.                             |
-| `output_language`                     | Output-language setting candidate.                      |
-| `seed_value`                          | Seed setting candidate.                                 |
-| `temperature`                         | Sampling-temperature candidate.                         |
-| `max_output_tokens`                   | Output-token budget candidate.                          |
-| `context_length`                      | Local context-window candidate.                         |
-| `mmproj`, `mmproj_path`               | Multimodal projector selection/path candidates.         |
-| `enable_thinking`, `use_think_prompt` | Thinking-mode candidates.                               |
-| `api_mode`, `api_key`, `api_base_url` | API settings are present but deferred from this report. |
+```python
+{
+    "required": {
+        "输入提示词": (
+            "STRING",
+            {
+                "default": "",
+                "multiline": True,
+                "tooltip": "输入要增强的文生图或图生图需求。",
+            },
+        ),
+        "任务模式": (["文生图", "图生图"], {"default": "文生图"}),
+        "输出语言": (
+            ["中文", "英文"],
+            {
+                "default": "中文",
+                "tooltip": "控制增强提示词的描述语言。用户明确要求的画面文字保持原文。",
+            },
+        ),
+        "增强方式": (["本地", "本地官方PE", "API"], {"default": "本地"}),
+        "api_key": (
+            "STRING",
+            {
+                "default": "",
+                "multiline": False,
+                "tooltip": "API Key；留空时读取 TE MAN 的 config.ini。",
+            },
+        ),
+        "api_base_url": (
+            "STRING",
+            {"default": DEFAULT_API_BASE_URL, "multiline": False},
+        ),
+        "model": (
+            "STRING",
+            {"default": DEFAULT_API_MODEL, "multiline": False},
+        ),
+        "文生图PE模型": (
+            _official_pe_choices(),
+            {"tooltip": "本地官方 PE 的文生图模型，增强方式选择本地官方PE且任务模式为文生图时生效。"},
+        ),
+        "图生图PE模型": (
+            _official_pe_choices(),
+            {"tooltip": "本地官方 PE 的图生图模型，增强方式选择本地官方PE且任务模式为图生图时生效。"},
+        ),
+        "主模型": (
+            _llm_file_choices(False),
+            {"tooltip": "本地 Qwen 视觉模型，文件放在 ComfyUI/models/LLM/。"},
+        ),
+        "mmproj": (
+            _llm_file_choices(True),
+            {
+                "default": "无",
+                "tooltip": "图生图需要选择对应的视觉投影文件。",
+            },
+        ),
+        "最大生成token": (
+            "INT",
+            {
+                "default": DEFAULT_MAX_OUTPUT_TOKENS,
+                "min": 256,
+                "max": 32768,
+                "step": 256,
+                "tooltip": "本地模型最大生成 token。API 模式不发送此限制。",
+            },
+        ),
+        "上下文长度": (
+            "INT",
+            {
+                "default": DEFAULT_CONTEXT_LENGTH,
+                "min": 1024,
+                "max": 327680,
+                "step": 256,
+                "tooltip": "本地模型的 llama.cpp 上下文长度；数值越大通常占用越多显存。API 模式不使用此设置。",
+            },
+        ),
+        "seed": (
+            "INT",
+            {
+                "default": 0,
+                "min": 0,
+                "max": 0xFFFFFFFFFFFFFFFF,
+                "step": 1,
+                "control_after_generate": True,
+                "tooltip": "本地模型随机种子。使用生成后控制可固定、递增、递减或随机化；API 模式不使用此设置。",
+            },
+        ),
+        "生成后自动卸载模型": (
+            "BOOLEAN",
+            {
+                "default": False,
+                "tooltip": "本地生成完成后自动卸载 Qwen 模型并释放显存。",
+            },
+        ),
+        "启用思考": (
+            "BOOLEAN",
+            {
+                "default": False,
+                "tooltip": "仅本地官方 PE 生效。开启后模型先进行思考再输出提示词；关闭后直接生成提示词。",
+            },
+        ),
+    },
+    "optional": {
+        "图片": ("IMAGE", {"tooltip": "图生图参考图片。"}),
+        "图片2": ("IMAGE", {"tooltip": "图生图附加参考图片。"}),
+        # 同样结构继续到 图片8
+    },
+}
+```
 
-These observations do **not** establish exact nesting, order, defaults, numeric bounds, dropdown choices, or whether each field is required or optional. Recovering those facts requires resolving the module-initialized global objects referenced by `FUN_180023f00` or observing the returned schema in a controlled Python runtime.
+The optional-name tuple is observed as exactly `图片`, `图片2`, …, `图片8`. The representation above preserves calls to `_official_pe_choices`, `_llm_file_choices`, `DEFAULT_API_BASE_URL`, `DEFAULT_API_MODEL`, `DEFAULT_MAX_OUTPUT_TOKENS`, and `DEFAULT_CONTEXT_LENGTH` because their runtime return/value objects were not executed. All other shown keys, choices, flags, bounds, steps, and literal defaults are statically established.
 
-### Static reconstruction boundary
-
-A focused pseudocode pass confirmed that `FUN_180023f00` repeatedly constructs two-element `(type-or-choice, options)` tuples and inserts them into a parent dictionary. Boolean option dictionaries contain observed true/false defaults, while several other options are produced by helper calls rather than retained literals. However, the keys, type objects, choices, and defaults reach this function through module-owned `DAT_18005...` global slots. The PE image does not retain those slots as direct string references; Cython populates them during module initialization.
-
-The current analysis therefore preserves the fields above as candidates instead of assigning each global slot a guessed Python value. The user selected static-only analysis, so the target module was not imported to materialize those objects.
+The user selected static-only analysis, so the target module was not imported. This also corrects the earlier candidate list: `temperature` is retained elsewhere in the module but is not inserted by this `INPUT_TYPES` body.
 
 ## `enhance_prompt`
 
@@ -177,7 +264,7 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 The following remain intentionally unresolved:
 
 - API request construction, authentication, and provider-specific response handling.
-- Exact `INPUT_TYPES` dictionary, ordering, defaults, min/max bounds, and option lists.
+- Runtime values of the named `DEFAULT_*` globals and the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact public `enhance_prompt` signature and return tuple.
 - Exact model-family match strings returned by `_detect_model_family`.
 - Complete local model constructor arguments and cache identity.
