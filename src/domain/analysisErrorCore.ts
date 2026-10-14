@@ -86,13 +86,15 @@ export interface AnalysisInputIssue {
 /** Provider output failed provider-neutral application parsing. */
 export class AnalysisOutputError extends AnalysisError {
   readonly _tag = "AnalysisOutputError";
+  readonly cleanupOnly: boolean;
 
   constructor(
     readonly operation: string,
     readonly reason: string,
-    options?: AnalysisErrorOptions,
+    options?: AnalysisErrorOptions & { readonly cleanupOnly?: boolean },
   ) {
     super(`Invalid analysis output for ${operation}: ${reason}`, options);
+    this.cleanupOnly = options?.cleanupOnly ?? false;
   }
 }
 
@@ -100,18 +102,24 @@ export class AnalysisOutputError extends AnalysisError {
 export class AnalysisCapabilityUnavailableError extends AnalysisError {
   readonly _tag = "AnalysisCapabilityUnavailableError";
   override readonly userMessage: string | undefined;
+  /** Incomplete cleanup must settle before the operation can be retried. */
+  readonly retryable: boolean;
 
   constructor(
     readonly providerId: string,
     readonly operation: string,
     readonly reason: string,
-    options?: AnalysisErrorOptions & { readonly userMessage?: string },
+    options?: AnalysisErrorOptions & {
+      readonly userMessage?: string;
+      readonly retryable?: boolean;
+    },
   ) {
     super(
       `Provider ${providerId} cannot execute ${operation}: ${reason}`,
       options,
     );
     this.userMessage = options?.userMessage;
+    this.retryable = options?.retryable === true && !this.cleanupIncomplete;
   }
 }
 

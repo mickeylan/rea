@@ -144,14 +144,26 @@ describe("enhanced MCP tools", () => {
     );
     expect(result).toEqual({
       document: "fixture",
+      image_base: "0x1000",
       segments: [
-        { name: "__TEXT", start: "0x1000", end: "0x1800", length: 2048 },
-        { name: "__DATA", start: "0x1800", end: "0x2000", length: 2048 },
+        {
+          name: "__TEXT",
+          start: "0x1000",
+          end: "0x1800",
+          length: 2048,
+          image_base: "0x1000",
+        },
+        {
+          name: "__DATA",
+          start: "0x1800",
+          end: "0x2000",
+          length: 2048,
+          image_base: "0x1000",
+        },
       ],
       segment_count: 2,
       procedure_count: 2,
       string_count: 700,
-      image_base: "0x1000",
     });
   });
 
@@ -300,5 +312,39 @@ describe("overview document identity through MCP", () => {
       (await client.callTool({ name: "binary_overview", arguments: {} }))
         .isError,
     ).toBe(true);
+  });
+
+  it("reports document selection unavailable when neither current-document nor list-documents is supported", async () => {
+    const client = await connect({
+      execute: (name) => {
+        if (name === "current_document" || name === "list_documents")
+          return Promise.resolve(
+            err(
+              new AnalysisCapabilityUnavailableError(
+                "fixture",
+                name,
+                "provider lacks document selection",
+              ),
+            ),
+          );
+        if (name === "list_segments") return Promise.resolve(ok([]));
+        if (name === "list_procedures" || name === "list_strings")
+          return Promise.resolve(ok([]));
+        throw new Error(`Unexpected analysis operation: ${name}`);
+      },
+    });
+    const result = await client.callTool({
+      name: "binary_overview",
+      arguments: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(parseMcpToolError(result).error).toMatchObject({
+      code: "capability_unavailable",
+      details: {
+        provider_id: "fixture",
+        operation: "list_documents",
+        reason: expect.stringContaining("provider lacks document selection"),
+      },
+    });
   });
 });

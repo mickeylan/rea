@@ -20,7 +20,9 @@ npx rea-agents setup
 Choose the agents to configure, review the proposed paths and changes, and
 approve the plan. npm's package-download approval and REA's setup approval are
 separate. Setup asks before changing agent configuration or installing Hopper.
-Restart the agents named in the completion message.
+Restart the agents named in the completion message. Quit Claude Desktop fully
+before approving, because a running app can overwrite the registration; on
+Windows, see [where Claude Desktop reads its configuration](client-configuration.md#claude-desktop).
 
 For the latest published release, use `npx rea-agents@latest setup`.
 [Package-runner and global-installation options](#package-runners-and-global-installation)
@@ -57,6 +59,10 @@ Hopper installation or any file write. Declining or pressing Ctrl-C makes no
 changes. Agent configuration writes preserve unrelated entries and comments,
 create backups, use atomic replacement, and verify their result. Setup and
 uninstall retain an existing `.rea.backup` rather than replacing the first snapshot.
+If that snapshot differs from the current configuration, setup previews and
+preserves a verified `.rea.backup.<sha256>.recovery` copy of the current bytes.
+Both snapshots remain available; a failed rollback reports the current recovery
+copy's path and the restore failure.
 Setup also retains valid environment overrides in REA's existing server entry,
 such as `REA_MCP_INPUT_SCHEMA_PROFILE` and `REA_MCP_MAX_RESPONSE_BYTES`.
 Detected provider settings replace only matching environment keys.
@@ -101,13 +107,11 @@ rea setup --yes --all-detected --install-hopper --json
 
 ### Skill destinations
 
-The bundled skill is installed where each selected client discovers personal
-skills: Claude Code uses `~/.claude/skills` (or
-`$CLAUDE_CONFIG_DIR/skills` when configured). Gemini CLI uses `.agents/skills`
-under its selected home; Antigravity 2.0 uses `~/.gemini/config/skills`.
-Other integrations, including Qwen Code, use `~/.agents/skills`.
-A mixed selection plans each distinct destination. Selecting the skill without a client uses the shared
-directory. Setup leaves existing skill copies in other locations untouched.
+The bundled skill is installed in each selected client's personal skill directory.
+See [client configuration](client-configuration.md) for client-specific roots,
+profiles, and environment overrides. A mixed selection plans each distinct
+destination. Selecting the skill without a client uses `~/.agents/skills`.
+Setup leaves existing skill copies in other locations untouched.
 
 `rea setup --skill-client claude_code --yes --json` refreshes and verifies the
 selected skill destination independently of MCP registration selection. The
@@ -124,6 +128,150 @@ identity remains available at `identity.catalog`.
 Setup pins package-runner MCP registrations to the exact installed REA version,
 installs the matching skill and on-demand references in the same plan, and adds
 `startup_timeout_sec = 30` for Codex and Grok Build.
+
+## Limit REA to one project or agent profile
+
+Setup registers REA for the whole client. For Claude Code it writes
+`mcpServers.rea` in `~/.claude.json` and installs the bundled skill under
+`~/.claude/skills`, so every project that Claude Code opens can call REA. To
+offer REA's tools only where they're wanted, use one of the routes below.
+
+Both routes control which sessions discover REA's MCP server and skill. They
+leave shell commands, filesystem access and network access available. An agent
+under the same OS account can run `rea` from `PATH` or `npx` and read other
+profiles and REA output. For clean-room separation, use an implementation
+environment with filesystem and network restrictions that prevent reading or
+fetching REA, the target and analysis output, including through shared
+installations and package registries. A separate account or container must
+enforce those restrictions.
+
+For Claude Code, check existing default-profile state before choosing either
+route. Setup is additive: a previous user-level REA registration and personal
+skill remain active in other projects. Back up the default configuration and
+REA skill first, then, with `CLAUDE_CONFIG_DIR` unset, remove the REA user
+registration with `claude mcp remove --scope user rea` and remove the known
+REA-installed `~/.claude/skills/reverse-engineer-anything` directory. Preserve
+unrelated registrations and skills. `rea uninstall` applies to other clients
+as well, so it is broader than this Claude-only migration.
+
+**A separate Claude Code profile.** Claude Code keeps settings, skills and session
+history under `CLAUDE_CONFIG_DIR`. Setup follows the same
+variable: it writes the registration to `$CLAUDE_CONFIG_DIR/.claude.json` and
+the skill to `$CLAUDE_CONFIG_DIR/skills`.
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-rea npx rea-agents setup --client claude_code
+CLAUDE_CONFIG_DIR=~/.claude-rea claude
+```
+
+A new profile may need authentication. Console sign-ins without an API key are
+stored outside `CLAUDE_CONFIG_DIR`; see
+[Claude Code authentication](https://code.claude.com/docs/en/authentication#log-in-with-multiple-accounts).
+Sessions started without the variable use the default profile's registration,
+skill and history.
+
+Inline assignments apply only to that command. Keep the same prefix for every
+profile check, setup rerun, update, or removal; bare commands use the current
+environment and can otherwise inspect or recreate default-profile state:
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-rea claude mcp list
+CLAUDE_CONFIG_DIR=~/.claude-rea npx rea-agents doctor --client claude_code --skill --json
+CLAUDE_CONFIG_DIR=~/.claude-rea npx -y rea-agents@latest setup --client claude_code --dry-run
+```
+
+After reviewing an update plan, rerun that same prefixed setup command without
+`--dry-run` and approve its exact changes. Profile removal likewise needs the
+prefix on `claude mcp remove --scope user rea` and any `rea uninstall` command;
+keep the broader client scope of uninstall in mind. Restart the selected
+profile after changing its pinned registration.
+
+`claude mcp remove` removes only the registration. To remove REA from this
+profile without running the broader uninstall flow, first back up the profile's
+REA-managed skill directory, then remove
+`$CLAUDE_CONFIG_DIR/skills/reverse-engineer-anything` as well. Keep other skills
+in the profile intact.
+
+The commands above use POSIX shell assignment syntax. In native Windows
+PowerShell, select the profile for the whole setup/launch/check session and
+restore the previous selection afterward:
+
+```powershell
+$previousClaudeConfigDir = $env:CLAUDE_CONFIG_DIR
+try {
+  $env:CLAUDE_CONFIG_DIR = Join-Path $HOME ".claude-rea"
+  npx rea-agents setup --client claude_code
+  claude mcp list
+  npx rea-agents doctor --client claude_code --skill --json
+  npx -y rea-agents@latest setup --client claude_code --dry-run
+  # After reviewing the plan, repeat setup without --dry-run and approve it.
+  claude
+  # Profile removal, when intended, also belongs inside this selected scope:
+  # claude mcp remove --scope user rea
+} finally {
+  if ($null -eq $previousClaudeConfigDir) {
+    Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue
+  } else {
+    $env:CLAUDE_CONFIG_DIR = $previousClaudeConfigDir
+  }
+}
+```
+
+Use PowerShell for these Windows examples rather than pasting POSIX assignments
+into cmd.exe. Keep profile updates, readiness checks and removal inside the
+same selected environment; the `finally` block restores the previous profile
+or unsets the variable when it was absent.
+
+**One project.** Install without configuring Claude Code: use the curl
+installer's `--no-setup`, or run setup only for other clients. Then register
+REA from the project directory at Claude Code's local scope.
+
+This route uses the default Claude profile. Keep `CLAUDE_CONFIG_DIR` unset for
+the entire local lifecycle: registration, backup, listing, version replacement
+and removal. In POSIX shells run `unset CLAUDE_CONFIG_DIR`; in PowerShell run
+`Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue` before these
+commands. Record an existing selection first if you intend to restore it after
+finishing. The configuration path below is the default profile's
+`~/.claude.json`; a different active profile uses its own config root instead.
+
+Register with the variable unset:
+
+<!-- x-release-please-start-version -->
+
+```bash
+claude mcp add --scope local rea -- npx -y rea-agents@6.4.0 mcp
+```
+
+On native Windows, use the same project directory and wrap the package-runner
+shim so the stdio client can launch it:
+
+```powershell
+claude mcp add --scope local rea -- cmd.exe /d /c npx -y rea-agents@6.4.0 mcp
+```
+
+<!-- x-release-please-end -->
+
+Local scope stores the entry under that directory's path in `~/.claude.json`,
+so other projects don't load it. This route doesn't install the bundled skill.
+Avoid `--scope project`, which writes `.mcp.json` into the repository where it
+can be committed or copied. `rea doctor` and `rea uninstall` read only the
+user-level entry, so they don't report or remove a local-scope registration;
+remove it with `claude mcp remove --scope local rea` from the same directory.
+`rea update` doesn't refresh it either, so it stays on the version it names.
+To move it to a newer release, first back up the project entry in
+`~/.claude.json` and record its environment and other metadata. In particular,
+preserve caller-selected overrides such as `REA_MCP_INPUT_SCHEMA_PROFILE` and
+`REA_MCP_MAX_RESPONSE_BYTES`. Run `claude mcp remove --scope local rea` from the
+same directory, then recreate it with the platform-appropriate command above
+and the new version. Reapply every recorded environment value with Claude
+Code's `mcp add --env NAME=value` options and restore any other retained entry
+metadata before restarting the project session. Removal and re-addition do not
+preserve these values automatically. Running setup for Claude Code instead
+would add a user-level entry for every project.
+
+Check the separate profile with the prefixed `claude mcp list` above and compare
+with the default profile with `CLAUDE_CONFIG_DIR` unset. For local scope, run
+`claude mcp list` from the selected project and again from another project.
 
 ## Check readiness for your task
 
@@ -275,18 +423,21 @@ hosted connector; see [its configuration](client-configuration.md#other-client-s
 | GitHub Copilot CLI | `copilot_cli`    |
 | Command Code       | `commandcode`    |
 | Qwen Code          | `qwen_code`      |
+| Kimi Code          | `kimi`           |
 | VS Code            | `vscode`         |
 | Grok Build         | `grok_build`     |
 | OMP                | `omp`            |
 | Pi                 | `pi`             |
 | Hermes             | `hermes`         |
 | Qoder              | `qoder`          |
+| Factory Droid      | `droid`          |
 | Trae               | `trae`           |
+| WorkBuddy          | `workbuddy`      |
 | ZCode              | `zcode`          |
 | DeepSeek Harness   | `dsh`            |
 
-`dsh` is main-only until a release after 6.4.0. The registry check above does
-not cover it.
+`dsh`, `kimi`, and `workbuddy` require a release containing them. The registry
+check above does not cover them.
 
 See [client configuration and troubleshooting](client-configuration.md) for
 configuration paths, profiles, trust policies, and schema-limit workarounds.
@@ -305,9 +456,12 @@ Hopper is separate commercial software with its own license. Its free demo has
 vendor-defined limits, and a paid license is optional. REA reuses any detected
 installation and preserves Hopper during uninstall.
 
-The supported native host baseline is macOS 12+, Ubuntu 24.04+, Fedora 41+,
-Nobara 44+, 64-bit Arch Linux, CachyOS, or Omarchy. Ghidra and IDA have their own provider-specific
-host requirements; Windows Ghidra uses the [experimental P0 boundary](windows-ghidra-p0.md).
+The automated Hopper installer supports macOS 12+, Ubuntu 24.04+, Fedora 41+,
+Nobara 44+, 64-bit Arch Linux, CachyOS, or Omarchy. REA itself runs on any
+Linux distribution with a recognized apt, dnf, or pacman package family, where
+an existing Hopper launcher is selected through `HOPPER_LAUNCHER_PATH`. Ghidra
+and IDA have their own provider-specific host requirements; Windows Ghidra uses
+the [experimental P0 boundary](windows-ghidra-p0.md).
 
 On macOS, approved setup downloads the official DMG, checks its published size
 and digest, validates the application bundle, and atomically installs it to
@@ -319,8 +473,8 @@ The Hopper launcher action used by REA creates a document from an executable;
 its supported command-line interface does not attach to an already-open
 document. While another live REA session owns the same target and loader
 profile, a second session reports the owning run ID instead of opening a
-duplicate document. Closing the owning REA session releases this guard; Hopper
-keeps its document open. A later REA session can therefore open another
+duplicate document. On macOS, closing the owning REA session releases this guard;
+Hopper keeps its document open. A later REA session can therefore open another
 document for the same target. REA does not currently identify, focus, or reuse
 that existing GUI document, and the supported launcher exposes no attach or
 reuse action for it.
@@ -343,8 +497,14 @@ Hopper application per user across cooperating REA processes. A competing
 CLI or MCP session receives the owning session ID before Hopper is launched,
 for both the same target and a different target. Switch targets through that
 MCP session, or close it before starting another session. Closing the owner
-releases the reservation. This does not attach to or claim ownership of
-manually opened Hopper applications.
+releases the reservation and stops REA's owned demo application and private
+display; the headless Linux demo does not retain documents after MCP shutdown.
+Its helper watches a private lifetime pipe, so an owner crash or SIGKILL also
+stops those children, without relying on a reusable PID or a process-name scan.
+A later session recovers the dead owner's stale lease after child cleanup;
+private runtime files can remain when REA itself was killed. This does not attach to
+or claim ownership of manually opened Hopper applications. An application left
+running by an older REA version must still be closed before starting a new session.
 
 Stale lease recovery is serialized. If an interrupted recovery leaves its
 reservation directory, the diagnostic identifies that exact path. Stop REA
@@ -437,8 +597,9 @@ For cursor navigation, string decoding, symbol-name limits, and regex matching,
 see [Hopper analysis behavior](native-investigation.md#hopper-analysis-behavior).
 
 Closing or switching a target closes its bound Hopper document, shuts down REA's
-bridge and removes its temporary socket directory while preserving the Hopper
-application and unrelated documents. A `cleanup_incomplete`
+bridge and removes its temporary socket directory. The macOS Hopper application
+and unrelated documents remain open; the owned Linux demo application stops.
+A `cleanup_incomplete`
 result identifies resources whose cleanup could not be verified.
 REA retains unresolved cleanup ownership and any confirmed shutdown phases.
 After addressing the reported failure, retry `close_binary` on the same
@@ -477,7 +638,13 @@ copying license secrets into logs, or killing unrelated Hopper processes.
 REA connects to an existing Ghidra installation on Linux x64/arm64, macOS x64/arm64,
 or experimental Windows x64 P0.
 It accepts Ghidra 12.1.x and the 64-bit full JDK declared by that installation's
-`application.java.min` and `application.java.max`. Current 12.1 releases require
+`application.java.min` and `application.java.max`. The JDK's reported platform must also
+map to the same native decompiler directory as the host: a JDK running under
+emulation (for example x86_64 under Rosetta on Apple silicon) or reporting a
+non-host `os.name` fails the doctor
+even when it is an otherwise accepted 64-bit full JDK. Select a matching JDK
+through `JAVA_HOME`; adding another decompiler in the JVM-selected directory
+does not satisfy this host-validated admission rule. Current 12.1 releases require
 JDK 21 or newer and set no maximum. The bridge is verified with Ghidra 12.1.4
 and JDK 21. Each installation must include the native decompiler for the host
 architecture in `Ghidra/Features/Decompiler/os/<platform>/` or the corresponding
@@ -503,7 +670,10 @@ and `set_addresses_names` name a function entry or any other mapped address
 session metadata edits leave executable bytes unchanged and are discarded on close. GUI controls
 require Hopper; Windows P0 remains read-only.
 
-Windows P0 admits native x86 and x86-64 PE applications and DLLs on fixed local NTFS volumes.
+Windows P0 admits native x86 and x86-64 PE applications and DLLs, plus explicitly
+selected [raw NMOS 6502 images](raw-binary.md#nmos-6502) with a caller-supplied
+entry at file offset 0, on fixed local NTFS volumes. Other raw CPU families remain
+unsupported on Windows.
 The npm package bundles native Job Object ownership, protected private runtime
 DACLs, and handle-based path admission; no separate addon installation is needed.
 See the [Windows Ghidra P0 guide](windows-ghidra-p0.md) for verified scope and
@@ -537,6 +707,11 @@ registrations. See [Windows Ghidra P0](windows-ghidra-p0.md) for provider diagno
 Doctor validates the platform, architecture, Ghidra 12.1.x application version,
 `support/analyzeHeadless` or `support/analyzeHeadless.bat`, the installation's
 Java major range, 64-bit JDK bitness, and the presence of `javac`/`javac.exe`.
+It also checks that the reported JVM `os.arch` and `os.name` map to the same native decompiler
+directory validated for the host; unrecognized reported architectures or a
+non-host operating system are refused. LaunchSupport overrides of either
+property, including through helper-environment JVM option variables, are
+rejected at launch.
 When Java is found through `PATH`, setup records its observed JDK home so GUI
 MCP clients do not depend on an incidental shell path. Setup shows every exact
 environment entry in its plan, writes only after approval, and never downloads,
@@ -745,6 +920,9 @@ errors expose Error names, messages, and available codes under
 truncation markers. Darwin ownership-helper compilation failures also retain
 the compiler outcome, exit code or signal, and bounded stderr; a timed-out
 compiler remains distinguishable from a compiler that exited with an error.
+The helper compile deadline defaults to 120,000 ms; set
+`REA_SWIFTC_COMPILE_TIMEOUT_MS` to an integer between 1 and 2,147,483,647 when
+a busy host needs longer.
 Other rejection values retain their primitive value or an explicit type.
 Shutdown warnings include the failure
 kind, message, and diagnostics, while process and temporary-project cleanup

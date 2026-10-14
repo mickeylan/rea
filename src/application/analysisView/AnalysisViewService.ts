@@ -47,15 +47,12 @@ export const inspectAnalysisViewValidated = (
   input: InspectAnalysisViewInput,
   lookup?: EvidenceLookup,
 ): Result<Evidence, AnalysisError> => {
-  const inline = input.source.kind === "inline" ? input.source.evidence : null;
-  const inlineCapture =
-    typeof inline === "object" &&
-    inline !== null &&
-    Object.getOwnPropertyDescriptor(inline, "operation")?.value ===
-      "inspect_web_network_capture";
   const accumulator =
-    input.view.kind === "api-surface" || inlineCapture
-      ? new WebNetworkApiSurfaceAccumulator()
+    input.view.kind === "api-surface"
+      ? new WebNetworkApiSurfaceAccumulator(
+          undefined,
+          input.view.include_query_parameter_names === true,
+        )
       : undefined;
   if (input.source.kind === "inline" && accumulator !== undefined) {
     const admitted = accumulator.admitInlineEvidence(input.source.evidence);

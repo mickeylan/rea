@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { parseConfig } from "./config/parseConfig.js";
 import { projectAnalysisError } from "./domain/analysisErrorProjection.js";
 
+it("reports a configuration failure for a NUL in Hopper loader arguments", () => {
+  const result = parseConfig({
+    HOPPER_LOADER_ARGS_JSON: JSON.stringify(["--option", "value\0suffix"]),
+  });
+  if (result.ok)
+    throw new Error("NUL argv cannot be passed to a child process");
+  expect(result.error).toMatchObject({
+    settings: [{ setting: "HOPPER_LOADER_ARGS_JSON" }],
+  });
+  expect(result.error.message).toContain("NUL");
+});
+
 describe("runtime configuration", () => {
   it("allows target-free startup and applies runtime defaults", () => {
     const empty = parseConfig({});
@@ -229,6 +241,40 @@ describe("configuration failure diagnostics", () => {
           settings: [
             {
               setting: "REA_GHIDRA_STARTUP_TIMEOUT_MS",
+              constraint: expect.any(String),
+            },
+          ],
+        },
+      });
+    },
+  );
+
+  it.each(["1", "90000", "2147483647"])(
+    "accepts Swift compile deadline %s without changing Hopper's deadline",
+    (value) => {
+      expect(
+        parseConfig({ REA_SWIFTC_COMPILE_TIMEOUT_MS: value }),
+      ).toMatchObject({
+        ok: true,
+        value: {
+          hopperStartupTimeoutMs: 120_000,
+        },
+      });
+    },
+  );
+
+  it.each(["", "0", "-1", "1.5", "1e3", "invalid", "2147483648"])(
+    "rejects malformed Swift compile deadline %j with its setting",
+    (value) => {
+      const result = parseConfig({ REA_SWIFTC_COMPILE_TIMEOUT_MS: value });
+      if (result.ok) throw new Error("Expected invalid Swift compile deadline");
+      expect(projectAnalysisError(result.error)).toMatchObject({
+        code: "configuration_invalid",
+        category: "invalid_input",
+        details: {
+          settings: [
+            {
+              setting: "REA_SWIFTC_COMPILE_TIMEOUT_MS",
               constraint: expect.any(String),
             },
           ],

@@ -8,7 +8,6 @@ import {
   parseNames,
   parseProcedures,
   parseRelatedAddresses,
-  parseSegmentImageBase,
   parseSegments,
 } from "./hopperValues.js";
 
@@ -66,19 +65,6 @@ describe("Hopper boundary values", () => {
       ok: true,
       value: ["fixture"],
     });
-    expect(
-      parseSegmentImageBase([
-        { image_base: "0x100000" },
-        { image_base: "0x100000" },
-      ]),
-    ).toBe("0x100000");
-    expect(
-      parseSegmentImageBase([
-        { image_base: "0x100000" },
-        { image_base: "0x200000" },
-      ]),
-    ).toBeUndefined();
-    expect(parseSegmentImageBase([{ name: "__TEXT" }])).toBeUndefined();
   });
 
   it.each([
@@ -92,9 +78,21 @@ describe("Hopper boundary values", () => {
     (_label, parse) => {
       const result = parse();
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error._tag).toBe("HopperProtocolError");
+      if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
     },
   );
+
+  it("uses provider-neutral wording for malformed shared values", () => {
+    const result = parseSegments([{ name: 1 }]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error._tag).toBe("AnalysisOutputError");
+      expect(result.error.operation).toBe("list_segments");
+      expect(result.error.reason).toBe(
+        "Provider returned an invalid segment list",
+      );
+    }
+  });
 });
 
 describe("provider-neutral inclusive function body evidence", () => {

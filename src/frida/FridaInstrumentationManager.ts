@@ -22,9 +22,11 @@ import type {
   FridaSessionStatus,
   StartFridaSessionInput,
 } from "../application/frida/FridaInstrumentationPort.js";
+import { FridaScriptLoadCancelledError } from "../application/frida/FridaInstrumentationPort.js";
 import type { OptionalProviderLoadFailure } from "../application/OptionalObservationProviders.js";
 import {
   AnalysisAccessDeniedError,
+  AnalysisCancelledError,
   AnalysisCapabilityUnavailableError,
   AnalysisInputError,
 } from "../domain/analysisErrorCore.js";
@@ -58,7 +60,7 @@ interface ManagedScript {
   readonly name: string;
   readonly script: Script;
   readonly onMessage: (message: FridaMessage, data: Buffer | null) => void;
-  released: boolean;
+  state: "active" | "cleanup-pending" | "released";
 }
 
 interface ManagedRemoteConnection {
@@ -83,8 +85,8 @@ interface ManagedSession extends ManagedRemoteConnection {
   readonly pid: number;
   readonly mode: "attach" | "spawn";
   readonly scripts: Map<string, ManagedScript>;
-  readonly messages: JsonValue[];
-  readonly messagesByScript: Map<string, JsonValue[]>;
+  readonly messages: MessageFifo<CapturedMessage>;
+  readonly messagesByScript: Map<string, MessageFifo<JsonValue>>;
   state: "paused" | "running" | "detached";
   targetResumeObserved: boolean;
   resumeAfterDetachPending: boolean;
@@ -114,6 +116,9 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
   readonly #deviceManagerLoader: () => Promise<DeviceManager>;
   #deviceManager: DeviceManager | undefined;
   #availabilityFailure: OptionalProviderLoadFailure | undefined;
+  readonly #operations = new Set<Promise<unknown>>();
+  #closing = false;
+  #closeAllPromise: Promise<void> | undefined;
 
   constructor(options: FridaInstrumentationManagerOptions = {}) {
     this.#deviceManager = options.deviceManager;
@@ -126,7 +131,13 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     return this.#availabilityFailure;
   }
 
-  async listDevices(remote?: FridaRemoteConnection): Promise<
+  listDevices(remote?: FridaRemoteConnection) {
+    return this.#withOperation("list_frida_devices", () =>
+      this.#listDevices(remote),
+    );
+  }
+
+  async #listDevices(remote?: FridaRemoteConnection): Promise<
     Result<
       {
         readonly devices: readonly FridaDeviceObservation[];
@@ -176,7 +187,13 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     }
   }
 
-  async listProcesses(selector: FridaDeviceSelector): Promise<
+  listProcesses(selector: FridaDeviceSelector) {
+    return this.#withOperation("list_frida_processes", () =>
+      this.#listProcesses(selector),
+    );
+  }
+
+  async #listProcesses(selector: FridaDeviceSelector): Promise<
     Result<
       {
         readonly deviceId: string;
@@ -235,7 +252,13 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     }
   }
 
-  async startSession(
+  startSession(input: StartFridaSessionInput) {
+    return this.#withOperation("start_frida_session", () =>
+      this.#startSession(input),
+    );
+  }
+
+  async #startSession(
     input: StartFridaSessionInput,
   ): Promise<Result<FridaSessionObservation, AnalysisError>> {
     let manager: DeviceManager | undefined;
@@ -277,7 +300,7 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
         pid,
         mode: input.mode,
         scripts: new Map(),
-        messages: [],
+        messages: new MessageFifo(),
         messagesByScript: new Map(),
         state: input.mode === "spawn" ? "paused" : "running",
         targetResumeObserved: false,
@@ -326,16 +349,25 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
   loadScript(
     sessionId: string,
     source: FridaScriptSource,
+    signal?: AbortSignal,
   ): Promise<Result<FridaScriptObservation, AnalysisError>> {
-    return this.#withSessionLock(sessionId, () =>
-      this.#loadScript(sessionId, source),
+    return this.#withOperation(
+      "load_frida_script",
+      () =>
+        this.#withSessionLock(sessionId, () =>
+          this.#loadScript(sessionId, source, signal),
+        ),
+      signal,
     );
   }
 
   async #loadScript(
     sessionId: string,
     source: FridaScriptSource,
+    signal?: AbortSignal,
   ): Promise<Result<FridaScriptObservation, AnalysisError>> {
+    if (signal?.aborted)
+      return err(cancelledOperation("load_frida_script", signal));
     const managed = this.#sessions.get(sessionId);
     if (managed === undefined || managed.state === "detached")
       return err(unknownFridaSession("load_frida_script", sessionId));
@@ -368,12 +400,14 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
       );
     }
 
+    if (signal?.aborted)
+      return err(cancelledOperation("load_frida_script", signal));
     const sourceSha256 = createHash("sha256")
       .update(scriptSource)
       .digest("hex");
     const scriptId = randomUUID();
     const scriptName = `rea-${scriptId}`;
-    managed.messagesByScript.set(scriptId, []);
+    managed.messagesByScript.set(scriptId, new MessageFifo());
     let nativeScript: Script | undefined;
     const onMessage = (message: FridaMessage, data: Buffer | null): void => {
       this.#recordMessage(managed, scriptId, message, data);
@@ -387,19 +421,36 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
         name: scriptName,
         script: nativeScript,
         onMessage,
-        released: false,
+        state: "active",
       };
       managed.scripts.set(scriptId, entry);
       nativeScript.message.connect(onMessage);
-      await nativeScript.load();
-      return ok({
+      if (!signal?.aborted) await nativeScript.load();
+      const observation: FridaScriptObservation = {
         scriptId,
         sourceKind: source.sourceKind,
         sourcePath: source.sourceKind === "file" ? source.path : null,
         sourceSha256,
-        messages: [...(managed.messagesByScript.get(scriptId) ?? [])],
+        messages: managed.messagesByScript.get(scriptId)?.toArray() ?? [],
         messagesTruncated: managed.messagesTruncated,
-      });
+      };
+      if (signal?.aborted) {
+        const cleanupReason = await this.#releaseScript(managed, entry);
+        return err(
+          new FridaScriptLoadCancelledError(observation, {
+            cause: signal.reason,
+            ...(cleanupReason === undefined
+              ? {}
+              : {
+                  cleanup: {
+                    reason: cleanupReason,
+                    resources: [sessionId, scriptId],
+                  },
+                }),
+          }),
+        );
+      }
+      return ok(observation);
     } catch (cause: unknown) {
       const entry = managed.scripts.get(scriptId);
       const cleanupReason =
@@ -418,9 +469,21 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     }
   }
 
-  resumeSession(sessionId: string): Promise<Result<null, AnalysisError>> {
-    return this.#withSessionLock(sessionId, () =>
-      this.#resumeSession(sessionId),
+  resumeSession(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<Result<null, AnalysisError>> {
+    return this.#withOperation(
+      "resume_frida_session",
+      () =>
+        this.#withSessionLock(sessionId, () =>
+          signal?.aborted
+            ? Promise.resolve(
+                err(cancelledOperation("resume_frida_session", signal)),
+              )
+            : this.#resumeSession(sessionId),
+        ),
+      signal,
     );
   }
 
@@ -438,6 +501,26 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
           "Only a paused process spawned by this session can be resumed.",
         ),
       );
+    const pendingScripts = [...managed.scripts.values()].filter(
+      (entry) => entry.state === "cleanup-pending" && !entry.script.isDestroyed,
+    );
+    if (pendingScripts.length > 0) {
+      const reason =
+        "Frida script cleanup is incomplete; unload the retained scripts or close the session before resuming.";
+      return err(
+        new AnalysisCapabilityUnavailableError(
+          "frida",
+          "resume_frida_session",
+          reason,
+          {
+            cleanup: {
+              reason,
+              resources: pendingScripts.map((entry) => entry.id),
+            },
+          },
+        ),
+      );
+    }
     try {
       await managed.device.resume(managed.pid);
       managed.state = "running";
@@ -452,9 +535,19 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
   unloadScript(
     sessionId: string,
     scriptId: string,
+    signal?: AbortSignal,
   ): Promise<Result<null, AnalysisError>> {
-    return this.#withSessionLock(sessionId, () =>
-      this.#unloadScript(sessionId, scriptId),
+    return this.#withOperation(
+      "unload_frida_script",
+      () =>
+        this.#withSessionLock(sessionId, () =>
+          signal?.aborted
+            ? Promise.resolve(
+                err(cancelledOperation("unload_frida_script", signal)),
+              )
+            : this.#unloadScript(sessionId, scriptId),
+        ),
+      signal,
     );
   }
 
@@ -487,13 +580,14 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     parentSessionReleased = false,
   ): Promise<string | undefined> {
     if (parentSessionReleased || entry.script.isDestroyed)
-      entry.released = true;
-    if (!entry.released) {
+      entry.state = "released";
+    if (entry.state !== "released") {
+      entry.state = "cleanup-pending";
       try {
         await entry.script.unload();
-        entry.released = true;
+        entry.state = "released";
       } catch (cause: unknown) {
-        if (entry.script.isDestroyed) entry.released = true;
+        if (entry.script.isDestroyed) entry.state = "released";
         else return sanitizeError(cause, managed.remote);
       }
     }
@@ -517,7 +611,9 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
         scriptId: id,
         name,
       })),
-      messages: [...managed.messages],
+      messages: managed.messages
+        .toArray()
+        .map(({ observation }) => observation),
       messagesTruncated: managed.messagesTruncated,
     };
   }
@@ -627,7 +723,17 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     return ok({ targetResumeObserved });
   }
 
-  async closeAll(): Promise<void> {
+  closeAll(): Promise<void> {
+    this.#closing = true;
+    this.#closeAllPromise ??= this.#closeAll().catch((cause: unknown) => {
+      this.#closeAllPromise = undefined;
+      throw cause;
+    });
+    return this.#closeAllPromise;
+  }
+
+  async #closeAll(): Promise<void> {
+    await Promise.allSettled(this.#operations);
     const startupFailures = (
       await Promise.all(
         [...this.#pendingStartups].map((pending) =>
@@ -716,6 +822,46 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
       managed.remoteRemovalPending = true;
       return `Unable to close remote Frida connection: ${sanitizeError(cause, managed.remote)}`;
     }
+  }
+
+  #withOperation<Value>(
+    name: string,
+    operation: () => Promise<Result<Value, AnalysisError>>,
+    signal?: AbortSignal,
+  ): Promise<Result<Value, AnalysisError>> {
+    if (this.#closing)
+      return Promise.resolve(
+        err(
+          new AnalysisCapabilityUnavailableError(
+            "frida",
+            name,
+            "Frida instrumentation is shutting down.",
+          ),
+        ),
+      );
+    let start = () => {};
+    const pending = new Promise<Result<Value, AnalysisError>>(
+      (resolve, reject) => {
+        start = () => {
+          try {
+            resolve(
+              signal?.aborted
+                ? err(cancelledOperation(name, signal))
+                : operation(),
+            );
+          } catch (cause: unknown) {
+            reject(cause);
+          }
+        };
+      },
+    );
+    this.#operations.add(pending);
+    const release = () => {
+      this.#operations.delete(pending);
+    };
+    void pending.then(release, release);
+    start();
+    return pending;
   }
 
   async #withSessionLock<Value>(
@@ -851,30 +997,21 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
       return;
     }
     while (
-      managed.messages.length > 0 &&
+      managed.messages.size > 0 &&
       managed.capturedBytes + charge > MAX_SESSION_CAPTURE_BYTES
     ) {
       const removed = managed.messages.shift();
       if (removed !== undefined) {
-        managed.capturedBytes -= Buffer.byteLength(JSON.stringify(removed));
-        if (
-          typeof removed === "object" &&
-          removed !== null &&
-          !Array.isArray(removed) &&
-          typeof removed.script_id === "string"
-        ) {
-          const scriptMessages = managed.messagesByScript.get(
-            removed.script_id,
-          );
-          const index = scriptMessages?.indexOf(removed) ?? -1;
-          if (scriptMessages !== undefined && index >= 0) {
-            scriptMessages.splice(index, 1);
-          }
-        }
+        managed.capturedBytes -= removed.charge;
+        // Both queues are in arrival order, so the globally oldest message is
+        // also the oldest one retained for its script.
+        const scriptMessages = managed.messagesByScript.get(removed.scriptId);
+        if (scriptMessages?.peek() === removed.observation)
+          scriptMessages.shift();
       }
       managed.messagesTruncated = true;
     }
-    managed.messages.push(observation);
+    managed.messages.push({ observation, scriptId, charge });
     managed.messagesByScript.get(scriptId)?.push(observation);
     managed.capturedBytes += charge;
   }
@@ -1224,6 +1361,18 @@ const providerError = (
   remote?: FridaRemoteConnection,
   cleanupReason?: string,
 ): AnalysisError => {
+  if (cause instanceof AnalysisCancelledError)
+    return new AnalysisCancelledError(operation, {
+      cause: cause.cause,
+      ...(cleanupReason === undefined
+        ? {}
+        : {
+            cleanup: {
+              reason: cleanupReason,
+              resources: ["Frida provider operation"],
+            },
+          }),
+    });
   const reason = sanitizeError(cause, remote);
   return new AnalysisCapabilityUnavailableError("frida", operation, reason, {
     cause: remote === undefined ? cause : new Error(reason),
@@ -1240,3 +1389,55 @@ const providerError = (
 
 const errorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
+
+const cancelledOperation = (
+  operation: string,
+  signal: AbortSignal,
+): AnalysisCancelledError =>
+  new AnalysisCancelledError(operation, { cause: signal.reason });
+
+interface CapturedMessage {
+  readonly observation: JsonValue;
+  readonly scriptId: string;
+  /** Serialized bytes charged against the session capture budget. */
+  readonly charge: number;
+}
+
+/**
+ * Arrival-ordered queue whose eviction advances a head offset. A full capture
+ * budget evicts on every message, and `Array#shift` would copy every retained
+ * message each time.
+ */
+class MessageFifo<T> {
+  #items: (T | undefined)[] = [];
+  #head = 0;
+
+  get size(): number {
+    return this.#items.length - this.#head;
+  }
+
+  push(item: T): void {
+    this.#items.push(item);
+  }
+
+  peek(): T | undefined {
+    return this.#items[this.#head];
+  }
+
+  shift(): T | undefined {
+    if (this.#head >= this.#items.length) return undefined;
+    const item = this.#items[this.#head];
+    this.#items[this.#head] = undefined;
+    this.#head += 1;
+    // Compacting once half the slots are evicted keeps eviction amortized O(1).
+    if (this.#head * 2 >= this.#items.length) {
+      this.#items = this.#items.slice(this.#head);
+      this.#head = 0;
+    }
+    return item;
+  }
+
+  toArray(): T[] {
+    return this.#items.slice(this.#head) as T[];
+  }
+}

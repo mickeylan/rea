@@ -22,6 +22,7 @@ import {
   unavailableAstEvidence,
 } from "./JavaScriptArtifactGraphEvidence.js";
 import {
+  artifactPathResolutionProperties,
   resolveArtifactPathByContext,
   type ArtifactPathResolution,
 } from "./JavaScriptArtifactPathResolution.js";
@@ -66,6 +67,7 @@ export interface AstEdgeInput {
 
 /** Inferred static relationship edge values. */
 export interface InferenceEdgeInput extends AstEdgeInput {
+  readonly limitations?: readonly string[];
   readonly relation:
     | "imports"
     | "loads"
@@ -162,6 +164,9 @@ export const addStaticInferenceEdge = (
       range: input.range,
       operation: "map-static-relationship",
       coverage: input.coverage,
+      ...(input.limitations === undefined
+        ? {}
+        : { limitations: input.limitations }),
     }),
   });
 };
@@ -269,6 +274,7 @@ export const createElectronRoleNode = (
           resolved_path: input.resolution.resolved_path,
           resolution_status: input.resolution.resolution_status,
           limitations: input.resolution.limitations,
+          ...artifactPathResolutionProperties(input.resolution),
           mechanism: input.mechanism,
         },
         evidence: staticInferenceEvidence({
@@ -347,7 +353,7 @@ export const resolveArtifactPath = (
   specifier: string,
   sourcePath: string,
   files: ReadonlyMap<string, JavaScriptArtifactFile>,
-  moduleKind?: "import" | "require",
+  moduleKind?: "import" | "require" | "compiler-dependent",
 ): string | null =>
   resolveArtifactPathByContext({
     declaredPath: specifier,

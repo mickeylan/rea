@@ -8,7 +8,11 @@ import {
 } from "./WindowsNativeLoader.js";
 
 const fixture = (
-  capabilities: { protocolStdin?: boolean; jobMemoryLimit?: unknown } = {},
+  capabilities: {
+    protocolStdin?: boolean;
+    jobMemoryLimit?: unknown;
+    privateBridgeDescriptorAccess?: unknown;
+  } = {},
 ) => {
   const bytes = Buffer.alloc(128);
   bytes.write("MZ");
@@ -51,6 +55,7 @@ const fixture = (
           architecture: "x64",
           filesystem: identity,
           privateDacl: true,
+          privateBridgeDescriptorAccess: true,
           atomicJobAssignment: true,
           killOnOwnerClose: true,
           ...capabilities,
@@ -143,6 +148,22 @@ describe("packaged Windows native admission", () => {
     },
   );
 
+  it.each([
+    { signature: "MZ", offset: 0 },
+    { signature: "PE", offset: 64 },
+  ])(
+    "rejects digest-valid high-bit $signature lookalikes before loading",
+    ({ offset }) => {
+      const value = fixture();
+      value.bytes[offset] = (value.bytes[offset] ?? 0) | 0x80;
+      value.manifest.artifactSha256 = createHash("sha256")
+        .update(value.bytes)
+        .digest("hex");
+      expect(loadWindowsNativeAuthority(value.host).available).toBe(false);
+      expect(value.loads()).toBe(0);
+    },
+  );
+
   it("rejects a digest-valid artifact for another machine", () => {
     const value = fixture();
     value.bytes.writeUInt16LE(0xaa64, 68);
@@ -182,5 +203,13 @@ describe("packaged Windows native admission", () => {
     });
     expect(loaded.available).toBe(false);
     expect(loaded).not.toHaveProperty("retryable");
+  });
+
+  it("rejects Windows controls without handle-bound Cutter descriptor access", () => {
+    const value = fixture({ privateBridgeDescriptorAccess: undefined });
+    expect(loadWindowsNativeAuthority(value.host)).toMatchObject({
+      available: false,
+      reason: expect.stringContaining("privateBridgeDescriptorAccess"),
+    });
   });
 });
