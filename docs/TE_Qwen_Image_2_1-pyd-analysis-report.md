@@ -174,9 +174,46 @@ Derived flow:
 3. Normalize settings such as seed, output language, token budget, and thinking mode.
 4. Route to an official, local, or API-backed path.
 5. Clean and parse the returned text.
-6. Return a Python object/tuple whose exact shape remains unverified.
+6. Return a one-element Python tuple containing the final enhanced-prompt object.
 
-The exact 26-argument internal C signature reported by Ghidra is generated implementation detail; it is not proof of the public Python signature.
+### Public calling shape
+
+The wrapper's ordered keyword table and arity branches recover the public method shape below. The first 16 arguments after `self` are required; the eight image arguments default to `None`:
+
+```python
+def enhance_prompt(
+    self,
+    输入提示词,
+    任务模式,
+    输出语言,
+    增强方式,
+    api_key,
+    api_base_url,
+    model,
+    文生图PE模型,
+    图生图PE模型,
+    主模型,
+    mmproj,
+    最大生成token,
+    上下文长度,
+    seed,
+    生成后自动卸载模型,
+    启用思考,
+    图片=None,
+    图片2=None,
+    图片3=None,
+    图片4=None,
+    图片5=None,
+    图片6=None,
+    图片7=None,
+    图片8=None,
+):
+    ...
+```
+
+The Cython wrapper accepts 17–25 positional values including `self`, fills the final eight slots with `None` when omitted, and rejects missing, excess, duplicate, or unexpected arguments. This confirms the order and optionality but not Python source annotations.
+
+On the successful paths, the implementation retains the cleaned/generated prompt object, constructs `PyTuple_New(1)`, stores that object at index 0, and returns the tuple. The compatible high-level return shape is therefore `(enhanced_prompt,)`. The empty-input and failure paths still require separate branch-level reconstruction.
 
 ### Normalization helpers
 
@@ -267,7 +304,7 @@ The following remain intentionally unresolved:
 
 - API request construction, authentication, and provider-specific response handling.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
-- Exact public `enhance_prompt` signature and return tuple.
+- Exact source annotations and every empty-input/error branch of `enhance_prompt`.
 - Exact model-family match strings returned by `_detect_model_family`.
 - Complete local model constructor arguments and cache identity.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
