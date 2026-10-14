@@ -128,7 +128,7 @@ const uniqueObservations = (
 };
 
 const isCythonMarker = (value: string): boolean =>
-  value.startsWith("__pyx_") || value.startsWith("__Pyx_");
+  /(?:^|\.)(?:__pyx_|__Pyx_)/u.test(value);
 
 /**
  * Project complete provider inventories without claiming recovered source,

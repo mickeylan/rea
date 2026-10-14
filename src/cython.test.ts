@@ -56,6 +56,11 @@ describe("Cython extension observations", () => {
         { address: "0x2000", value: "package.module.Widget.build" },
         { address: "0x2010", value: "C:\\build\\module.pyx" },
         { address: "0x2020", value: "__Pyx_PyObject_Call" },
+        {
+          address: "0x2030",
+          value: "package.module.__pyx_scope_struct_generator",
+        },
+        { address: "0x2040", value: "package.module.not__pyx_marker" },
       ],
       complete: true,
     });
@@ -65,9 +70,26 @@ describe("Cython extension observations", () => {
       initializers: [{ address: "0x1000", value: "PyInit_example" }],
       module_names: ["example"],
     });
-    expect(inspection.cython.status).toBe("detected");
+    expect(inspection.cython).toMatchObject({
+      status: "detected",
+      markers: expect.arrayContaining([
+        {
+          address: "0x2030",
+          value: "package.module.__pyx_scope_struct_generator",
+        },
+      ]),
+    });
+    expect(inspection.cython.markers).not.toContainEqual({
+      address: "0x2040",
+      value: "package.module.not__pyx_marker",
+    });
     expect(inspection.qualified_name_candidates).toEqual([
       { address: "0x2000", value: "package.module.Widget.build" },
+      {
+        address: "0x2030",
+        value: "package.module.__pyx_scope_struct_generator",
+      },
+      { address: "0x2040", value: "package.module.not__pyx_marker" },
     ]);
     expect(inspection.source_path_observations).toEqual([
       { address: "0x2010", value: "C:\\build\\module.pyx" },
