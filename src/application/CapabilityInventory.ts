@@ -1,3 +1,4 @@
+import { extname } from "node:path";
 import { z } from "zod";
 import { sqliteDatabaseCapability } from "./sqlite/SqliteDatabaseCapability.js";
 import type {
@@ -32,8 +33,13 @@ import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 
 const statusSchema = z.object({
   open: z.boolean(),
+  path: z.string().optional(),
   kind: z.enum(["executable", "database", "archive", "artifact"]).optional(),
   format: z.string().optional(),
+  executable_role: z
+    .enum(["application", "shared-library", "non-executable"])
+    .optional(),
+  managed: z.boolean().optional(),
   capabilities: z
     .array(providerCapabilitySet)
     .transform(expandProviderCapabilities),
@@ -94,6 +100,13 @@ type AvailabilityContext = {
     | "artifact"
     | undefined;
   readonly targetFormat: string | undefined;
+  readonly targetPath: string | undefined;
+  readonly executableRole:
+    | "application"
+    | "shared-library"
+    | "non-executable"
+    | undefined;
+  readonly managed: boolean | undefined;
   readonly descriptors: ReadonlyMap<string, ProviderDescriptor>;
   readonly policy: AvailabilityPolicy;
 };
@@ -107,6 +120,7 @@ const ENHANCED_REQUIREMENTS: Readonly<
     "list_names",
     "procedure_callees",
   ],
+  inspect_cython_extension: ["list_names", "list_strings"],
   inspect_native_dispatch_metadata: ["list_names"],
   get_objc_classes: ["list_names"],
   get_objc_protocols: ["list_names"],
@@ -182,6 +196,9 @@ export const buildCapabilityInventory = (
       targetOpen: status.open,
       targetKind: status.kind,
       targetFormat: status.format,
+      targetPath: status.path,
+      executableRole: status.executable_role,
+      managed: status.managed,
       descriptors,
       policy,
     });
@@ -575,6 +592,9 @@ const targetAvailability = ({
   kind,
   targetKind,
   targetFormat,
+  targetPath,
+  executableRole,
+  managed,
   targetOpen,
 }: AvailabilityContext): Availability | null => {
   if (FRIDA_OPERATION_NAMES.has(name)) return null;
@@ -582,6 +602,21 @@ const targetAvailability = ({
     return {
       reason: "target_required",
       remediation: "Call open_binary with a supported local target.",
+    };
+  if (
+    targetOpen &&
+    name === "inspect_cython_extension" &&
+    (targetKind !== "executable" ||
+      targetFormat !== "pe" ||
+      executableRole !== "shared-library" ||
+      managed !== false ||
+      targetPath === undefined ||
+      extname(targetPath).toLowerCase() !== ".pyd")
+  )
+    return {
+      reason: "target_unsupported",
+      remediation:
+        "Call open_binary with an unmanaged native PE shared library whose path ends in .pyd.",
     };
   if (
     targetKind !== undefined &&

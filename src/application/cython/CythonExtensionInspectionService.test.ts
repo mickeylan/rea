@@ -32,8 +32,12 @@ class RecordingAnalysis implements AnalysisOperationPort {
     readonly names: unknown,
     readonly strings: unknown,
     readonly afterNames?: () => void,
-    readonly namesProfile = profile,
-    readonly stringsProfile = profile,
+    readonly namesProfile: ReturnType<
+      typeof createAnalysisProfile
+    > | null = profile,
+    readonly stringsProfile: ReturnType<
+      typeof createAnalysisProfile
+    > | null = profile,
   ) {}
 
   execute(
@@ -47,7 +51,9 @@ class RecordingAnalysis implements AnalysisOperationPort {
       return Promise.resolve(
         ok(
           createAnalysisExecution(this.names, provider, {
-            analysisProfile: this.namesProfile,
+            ...(this.namesProfile === null
+              ? {}
+              : { analysisProfile: this.namesProfile }),
             limitations: ["names limitation"],
             locations: [{ kind: "address", address: "0x1000" }],
             subject: target,
@@ -58,7 +64,9 @@ class RecordingAnalysis implements AnalysisOperationPort {
     return Promise.resolve(
       ok(
         createAnalysisExecution(this.strings, provider, {
-          analysisProfile: this.stringsProfile,
+          ...(this.stringsProfile === null
+            ? {}
+            : { analysisProfile: this.stringsProfile }),
           limitations: ["strings limitation"],
           locations: [{ kind: "address", address: "0x2000" }],
           subject: target,
@@ -92,6 +100,9 @@ describe("CythonExtensionInspectionService", () => {
     expect(result.value.operation).toBe("inspect_cython_extension");
     expect(result.value.confidence).toBe("derived");
     expect(result.value.provider.id).toBe("rea-workflow");
+    expect(result.value.analysis_profile?.parameters).toMatchObject({
+      workflow_revision: 1,
+    });
     expect(result.value.normalized_result).toMatchObject({
       python_extension: { status: "confirmed", module_names: ["example"] },
       cython: { status: "detected" },
@@ -143,6 +154,27 @@ describe("CythonExtensionInspectionService", () => {
     expect(result.ok).toBe(false);
     expect(analysis.calls).toEqual(["list_names"]);
     if (!result.ok) expect(result.error._tag).toBe("AnalysisCancelledError");
+  });
+
+  it("omits a partial upstream profile from combined Evidence", async () => {
+    const analysis = new RecordingAnalysis(
+      nameInventory,
+      stringInventory,
+      undefined,
+      profile,
+      null,
+    );
+    const result = await new CythonExtensionInspectionService().inspect(
+      analysis,
+      target,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.analysis_profile).toBeNull();
+    expect(result.value.limitations).toContain(
+      "At least one provider inventory omitted its analysis profile; the combined Evidence is not bound to the remaining profile.",
+    );
   });
 
   it("rejects inventories produced under different profiles", async () => {

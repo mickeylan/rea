@@ -154,6 +154,7 @@ export const CLI_COMMANDS = Object.freeze({
   projectAndroidApplicationGraph: "project-android-application-graph",
   projectAppleApplicationGraph: "project-apple-application-graph",
   projectHarmonyApplicationGraph: "project-harmony-application-graph",
+  inspectCythonExtension: "inspect-cython-extension",
 });
 
 /** Ordered primary CLI inventory; aliases are intentionally excluded. */

@@ -24,7 +24,9 @@ export const workflowAnalysisProfile = (
           operation === "get_call_graph" ||
           operation === "trace_feature"
         ? { workflow_revision: 2 }
-        : {}),
+        : operation === "inspect_cython_extension"
+          ? { workflow_revision: 1 }
+          : {}),
   });
 
 /** Provider identity for deterministic artifact inventories. */

@@ -30,6 +30,7 @@ export const registerCoreBinaryCommands = (
   registerSearchCommand(cli, logger, runDirectAnalysis);
   registerXrefsCommand(cli, logger, runDirectAnalysis);
   registerTraceCommand(cli, logger, runDirectAnalysis);
+  registerCythonExtensionCommand(cli, logger, runDirectAnalysis);
 };
 
 const registerOverviewCommands = (
@@ -498,6 +499,37 @@ const registerSearchCommand = (
             mode: options.mode,
             case_sensitive: options.caseSensitive,
           },
+          directAnalysisOptionsFromCli(logger, options),
+        ),
+      ),
+  });
+};
+
+const registerCythonExtensionCommand = (
+  cli: CliInstance,
+  logger: Logger,
+  runDirectAnalysis: DirectAnalysis["runDirectAnalysis"],
+): void => {
+  cli.command(CLI_COMMANDS.inspectCythonExtension, {
+    description:
+      "Inspect a Cython .pyd file for Python extension and Cython marker observations",
+    args: z.object({
+      path: z.string().describe("Path to a Cython .pyd file"),
+    }),
+    options: z.object({
+      snapshot: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Load and update a local analysis snapshot"),
+      ...nativeOpenOptionFields,
+    }),
+    run: ({ args, options }) =>
+      logCliCommand(logger, "inspect-cython-extension", () =>
+        runDirectAnalysis(
+          args.path,
+          "inspect_cython_extension",
+          {},
           directAnalysisOptionsFromCli(logger, options),
         ),
       ),

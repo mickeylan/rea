@@ -68,13 +68,12 @@ export class CythonExtensionInspectionService {
       strings: observations(strings.value),
       complete: true,
     });
-    const profiles = [
-      namesExecution.value.analysisProfile,
-      stringsExecution.value.analysisProfile,
-    ].filter((profile) => profile !== undefined);
+    const namesProfile = namesExecution.value.analysisProfile;
+    const stringsProfile = stringsExecution.value.analysisProfile;
     if (
-      profiles.length === 2 &&
-      !analysisProfilesEqual(profiles[0]!, profiles[1]!)
+      namesProfile !== undefined &&
+      stringsProfile !== undefined &&
+      !analysisProfilesEqual(namesProfile, stringsProfile)
     )
       return err(
         new AnalysisOutputError(
@@ -82,9 +81,18 @@ export class CythonExtensionInspectionService {
           "Provider inventories were produced under different analysis profiles.",
         ),
       );
-    const upstreamProfile = profiles[0];
+    const upstreamProfile =
+      namesProfile !== undefined && stringsProfile !== undefined
+        ? namesProfile
+        : undefined;
     const limitations = unique([
       "Derived from complete provider name and defined-string inventories in one admitted binary session.",
+      ...(upstreamProfile === undefined &&
+      (namesProfile !== undefined || stringsProfile !== undefined)
+        ? [
+            "At least one provider inventory omitted its analysis profile; the combined Evidence is not bound to the remaining profile.",
+          ]
+        : []),
       ...namesExecution.value.limitations,
       ...stringsExecution.value.limitations,
       ...result.limitations,
@@ -103,7 +111,12 @@ export class CythonExtensionInspectionService {
         ]),
         ...(upstreamProfile === undefined
           ? {}
-          : { analysisProfile: workflowAnalysisProfile(upstreamProfile) }),
+          : {
+              analysisProfile: workflowAnalysisProfile(
+                upstreamProfile,
+                OPERATION,
+              ),
+            }),
       }),
     );
   }

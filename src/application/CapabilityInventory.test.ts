@@ -51,8 +51,14 @@ const enabledPolicy: Parameters<typeof buildCapabilityInventory>[1] = {
 const status = (
   options: {
     readonly open?: boolean;
+    readonly path?: string;
     readonly kind?: "executable" | "database" | "archive" | "artifact";
     readonly format?: string;
+    readonly executable_role?:
+      | "application"
+      | "shared-library"
+      | "non-executable";
+    readonly managed?: boolean;
     readonly capabilities?: readonly {
       readonly operation: string;
       readonly available: boolean;
@@ -62,8 +68,13 @@ const status = (
   } = {},
 ) => ({
   open: options.open ?? false,
+  ...(options.path === undefined ? {} : { path: options.path }),
   ...(options.kind === undefined ? {} : { kind: options.kind }),
   ...(options.format === undefined ? {} : { format: options.format }),
+  ...(options.executable_role === undefined
+    ? {}
+    : { executable_role: options.executable_role }),
+  ...(options.managed === undefined ? {} : { managed: options.managed }),
   capabilities:
     options.capabilities === undefined || options.capabilities.length === 0
       ? []
@@ -97,6 +108,7 @@ const entry = (
   return found;
 };
 
+// oxlint-disable-next-line max-lines-per-function -- keep related availability reasons in one table-driven boundary suite.
 describe("capability failure reasons", () => {
   it("keeps an unavailable Android runtime distinct from a missing provider", () => {
     const inventory = buildCapabilityInventory(status(), {
@@ -111,6 +123,82 @@ describe("capability failure reasons", () => {
     expect(
       inventory.find(({ name }) => name === "inspect_android_package"),
     ).toMatchObject({ available: false, reason: "provider_unavailable" });
+  });
+
+  it("advertises Cython inspection only for admitted native pyd targets", () => {
+    const capabilities = [
+      { operation: "list_names", available: true, reason: null },
+      { operation: "list_strings", available: true, reason: null },
+    ];
+    expect(
+      entry(
+        "inspect_cython_extension",
+        status({
+          open: true,
+          path: "C:\\fixtures\\example.pyd",
+          kind: "executable",
+          format: "pe",
+          executable_role: "shared-library",
+          managed: false,
+          capabilities,
+        }),
+      ),
+    ).toMatchObject({ available: true, reason: "available" });
+    for (const incompatible of [
+      {
+        path: "C:\\fixtures\\example.dll",
+        kind: "executable" as const,
+        format: "pe",
+        executable_role: "shared-library" as const,
+        managed: false,
+      },
+      {
+        path: "C:\\fixtures\\example.pyd",
+        kind: "executable" as const,
+        format: "elf",
+        executable_role: "shared-library" as const,
+        managed: false,
+      },
+      {
+        path: "C:\\fixtures\\example.pyd",
+        kind: "executable" as const,
+        format: "pe",
+        executable_role: "application" as const,
+        managed: false,
+      },
+      {
+        path: "C:\\fixtures\\example.pyd",
+        kind: "executable" as const,
+        format: "pe",
+        executable_role: "shared-library" as const,
+        managed: true,
+      },
+      {
+        path: "C:\\fixtures\\example.pyd",
+        kind: "database" as const,
+        format: "analysis-database",
+        executable_role: undefined,
+        managed: undefined,
+      },
+    ])
+      expect(
+        entry(
+          "inspect_cython_extension",
+          status({
+            open: true,
+            path: incompatible.path,
+            kind: incompatible.kind,
+            format: incompatible.format,
+            ...(incompatible.executable_role === undefined
+              ? {}
+              : { executable_role: incompatible.executable_role }),
+            ...(incompatible.managed === undefined
+              ? {}
+              : { managed: incompatible.managed }),
+            capabilities,
+          }),
+        ),
+      ).toMatchObject({ available: false, reason: "target_unsupported" });
   });
 
   it("admits physical universal Mach-O targets for native Mach-O operations", () => {

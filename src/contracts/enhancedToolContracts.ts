@@ -86,4 +86,9 @@ export const ENHANCED_TOOL_CONTRACTS = [
     "Trace a bounded static dependency graph from one explicit native procedure. Includes high-p-code def-use, constants, operators, memory and branch operations, resolved call edges, and derived argument/parameter and return/output bindings. Missing bindings, alias semantics, persistent state and RNG roles remain unknown. Budgets bound depth, decompilations, graph size and payloads; nodes are paginated.",
     enhancedInputSchemas.trace_native_values,
   ),
+  enhanced(
+    "inspect_cython_extension",
+    "Inspect a native PE .pyd file for Python/Cython extension characteristics. Returns confirmed CPython extension initializers (PyInit_* symbols), detected Cython markers (__pyx_, __Pyx_), qualified name candidates, and CPython API type hints derived from symbol observations. Target must be a native PE shared library with .pyd extension. The result is a conservative projection; qualified names and source paths are retained string observations, not proof of source recovery, class ownership, callable signatures, or runtime behavior.",
+    enhancedInputSchemas.inspect_cython_extension,
+  ),
 ] as const satisfies readonly ToolContract[];

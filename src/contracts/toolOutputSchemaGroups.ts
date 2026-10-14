@@ -6,6 +6,7 @@ import {
   machoSummaryViewResultSchema,
   managedArtifactSummaryViewResultSchema,
 } from "../domain/analysisView/analysisView.js";
+import { cythonExtensionInspectionSchema } from "../domain/cythonExtension.js";
 import { evidenceBundleSummarySchema } from "../domain/evidenceRecordSummary.js";
 import { BINARY_ARCHITECTURES } from "../domain/binaryTargetTypes.js";
 import {
@@ -383,6 +384,7 @@ export const enhancedOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
   inspect_native_api: evidenceResultOf(nativeApiInspectionResultSchema),
   trace_feature: literalTraceOutput,
   trace_call_path: callPathTraceOutput,
+  inspect_cython_extension: evidenceResultOf(cythonExtensionInspectionSchema),
 };
 
 /** Exact Evidence schemas for provider-neutral native inspection. */
@@ -460,6 +462,10 @@ const detectedLifecycleTargetSchema = z.object({
   ...lifecycleTargetFields,
   format: targetFormatSchema.exclude(["raw-binary"]),
   architecture: z.enum(BINARY_ARCHITECTURES).exclude(["6502"]).nullable(),
+  executable_role: z
+    .enum(["application", "shared-library", "non-executable"])
+    .optional(),
+  managed: z.boolean().optional(),
 });
 const rawLifecycleTargetSchema = z.object({
   ...lifecycleTargetFields,

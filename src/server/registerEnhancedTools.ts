@@ -24,11 +24,14 @@ import type { ToolContract } from "../contracts/toolContractTypes.js";
 import type { AnalysisProfileCommitment } from "../domain/analysisProfile.js";
 import type { BinaryTarget } from "../domain/binaryTargetTypes.js";
 import type { JsonValue } from "../domain/jsonValue.js";
+import { AnalysisOutputError } from "../domain/analysisErrorCore.js";
+import { err } from "../domain/result.js";
 import type { Logger } from "pino";
 import { mcpProgressReporter } from "./mcpProgress.js";
 import { logToolExecution } from "./toolLogging.js";
 import { toolRegistrationOptions } from "./toolRegistrationOptions.js";
 import { executeFunctionAnalysisEvidence } from "../application/FunctionAnalysisEvidence.js";
+import { CythonExtensionInspectionService } from "../application/cython/CythonExtensionInspectionService.js";
 import type { WithAdmittedAnalysis } from "./analysisAdmission.js";
 
 /** Optional session services used by enhanced tool registration. */
@@ -74,6 +77,7 @@ export const registerEnhancedTools = (
   const traceCallPath = toolContract("trace_call_path");
   const traceNativeUiAction = toolContract("trace_native_ui_action");
   const traceNativeValues = toolContract("trace_native_values");
+  const inspectCythonExtension = toolContract("inspect_cython_extension");
   server.registerTool(
     traceNativeValues.name,
     toolRegistrationOptions(traceNativeValues),
@@ -200,6 +204,15 @@ export const registerEnhancedTools = (
         context,
       }),
   );
+  server.registerTool(
+    inspectCythonExtension.name,
+    toolRegistrationOptions(inspectCythonExtension),
+    (input, context) =>
+      executeEnhancedTool(registration, inspectCythonExtension, {
+        validatedCall: { name: "inspect_cython_extension", input },
+        context,
+      }),
+  );
 };
 
 const executeEnhancedTool = async (
@@ -232,6 +245,16 @@ const executeEnhancedTool = async (
           context,
           parameters,
         });
+      if (name === "inspect_cython_extension")
+        return executeCythonInspectionTool(
+          admittedAnalysis,
+          registration,
+          contract,
+          {
+            context,
+            parameters,
+          },
+        );
       const analysis: AnalysisOperationPort = {
         execute: (operation, operationParameters, executionOptions) =>
           admittedAnalysis.execute(operation, operationParameters, {
@@ -340,6 +363,80 @@ const executeFunctionTool = async (
     result.value,
     contract,
     registration.recordEvidence?.(result.value),
+  );
+};
+
+const executeCythonInspectionTool = async (
+  analysis: AnalysisOperationPort,
+  registration: EnhancedToolRegistration & {
+    readonly delivery: ToolResultDelivery;
+  },
+  contract: ToolContract,
+  request: {
+    readonly context: ServerContext;
+    readonly parameters: Readonly<Record<string, JsonValue>>;
+  },
+): Promise<CallToolResult> => {
+  const { context } = request;
+  const progress = mcpProgressReporter(context);
+  const service = new CythonExtensionInspectionService();
+  const target = registration.activeTarget?.();
+  if (target === undefined) {
+    await progress.report({
+      phase: "inspect_cython_extension",
+      completed: 1,
+      total: 1,
+      message: "failed",
+      terminal: true,
+    });
+    return registration.delivery.toCallToolResult(
+      err(
+        new AnalysisOutputError(
+          "inspect_cython_extension",
+          "Admitted analysis did not retain an active target identity.",
+        ),
+      ),
+      contract,
+    );
+  }
+  const executionResult = await logToolExecution(
+    registration.logger,
+    "inspect_cython_extension",
+    () =>
+      service.inspect(analysis, target, {
+        signal: context.mcpReq.signal,
+      }),
+  );
+  await progress.report({
+    phase: "inspect_cython_extension",
+    completed: 1,
+    total: 1,
+    message: executionResult.ok ? "completed" : "failed",
+    terminal: true,
+  });
+  if (!executionResult.ok)
+    return registration.delivery.toCallToolResult(executionResult, contract);
+  const evidence = executionResult.value;
+  const recorded = registration.recordEvidence?.(evidence);
+  if (recorded !== undefined && !recorded.ok)
+    return registration.delivery.toCallToolResult(recorded, contract);
+  if (
+    registration.allowsSnapshotReplay?.("inspect_cython_extension") === true
+  ) {
+    const workflowRecord = workflowSnapshotRecord(
+      evidence,
+      "inspect_cython_extension",
+    );
+    if (workflowRecord !== undefined) {
+      const snapshot = registration.recordWorkflowSnapshot?.(workflowRecord);
+      if (snapshot !== undefined && !snapshot.ok)
+        return registration.delivery.toCallToolResult(snapshot, contract);
+    }
+  }
+  return registration.delivery.toEvidenceToolResult(
+    evidence,
+    contract,
+    recorded,
   );
 };
 

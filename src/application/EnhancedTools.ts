@@ -78,6 +78,16 @@ export class EnhancedTools {
     }
     if (name === "analyze_function" || name === "inspect_native_api")
       return this.#executeFunctionAnalysis(name, input, signal);
+    if (name === "inspect_cython_extension")
+      return Promise.resolve(
+        err(
+          new AnalysisCapabilityUnavailableError(
+            "rea-workflow",
+            name,
+            "This workflow requires a target-bound session adapter.",
+          ),
+        ),
+      );
     switch (name) {
       case "inspect_native_dispatch_metadata": {
         const parsed =
@@ -182,6 +192,16 @@ export class EnhancedTools {
       case "trace_native_ui_action": {
         return traceNativeUiAction(this.analysis, call.input, signal);
       }
+      case "inspect_cython_extension":
+        return Promise.resolve(
+          err(
+            new AnalysisCapabilityUnavailableError(
+              "rea-workflow",
+              call.name,
+              "This workflow requires a target-bound session adapter.",
+            ),
+          ),
+        );
     }
   }
 

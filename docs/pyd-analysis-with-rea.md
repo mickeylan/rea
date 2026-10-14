@@ -1,7 +1,7 @@
 # 使用 REA + Ghidra 分析 Python .pyd 文件实战指南
 
-> 日期：2026-10-13
-> 工具：REA 6.4.0 + Ghidra 12.1.4
+> 更新日期：2026-10-14
+> 工具：REA repository main + Ghidra 12.1.4
 > 目标：Cython 编译的 ComfyUI 自定义节点
 
 ---
@@ -65,7 +65,25 @@ D:\npm-global\rea.cmd doctor --json
 
 ## 第二部分：分析流程
 
-### 典型分析步骤
+### 保守的扩展检查
+
+repository main 提供一个只读组合工作流：
+
+```powershell
+rea inspect-cython-extension "C:\path\to\module.pyd" --provider ghidra --json
+```
+
+该命令在同一个已准入的二进制会话中读取完整名称清单和 Ghidra 已定义字符串清单，并报告：
+
+- 观察到的 `PyInit_*` 初始化符号；
+- 观察到的 `__pyx_` / `__Pyx_` Cython 标记；
+- Python 限定名称和源码路径字符串候选；
+- 精确 CPython API 符号提供的局部类型提示；
+- 实际检查的名称、字符串数量及限制。
+
+该结果不声称恢复了源码、类归属、函数签名或运行时行为。没有观察到 Cython 标记时，状态保持为未知。
+
+### 典型深入步骤
 
 ```
 ┌─────────────────────────────────────────────────────────┐

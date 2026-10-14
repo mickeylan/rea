@@ -77,7 +77,8 @@ type DirectAnalysisTool =
   | "xrefs"
   | "trace_feature"
   | "trace_native_ui_action"
-  | "trace_native_values";
+  | "trace_native_values"
+  | "inspect_cython_extension";
 
 /**
  * Open one binary, execute one tool, and always release provider resources.
@@ -393,6 +394,18 @@ const executeAnalysisTool = async (input: {
       ? { output: result.value, evidence: result.value }
       : { output: cliError(result.error) };
   }
+  if (tool === "inspect_cython_extension") {
+    const { CythonExtensionInspectionService } =
+      await import("./cython/CythonExtensionInspectionService.js");
+    const result = await new CythonExtensionInspectionService().inspect(
+      session,
+      input.openedTarget,
+      { signal },
+    );
+    return result.ok
+      ? { output: result.value, evidence: result.value }
+      : { output: cliError(result.error) };
+  }
   if (
     tool === "binary_overview" ||
     tool === "inspect_native_api" ||
@@ -592,6 +605,7 @@ const isWorkflowEvidenceTool = (
   tool === "binary_overview" ||
   tool === "inspect_native_api" ||
   tool === "inspect_native_dispatch_metadata" ||
+  tool === "inspect_cython_extension" ||
   tool === "trace_feature" ||
   tool === "trace_native_values" ||
   tool === "trace_native_ui_action";

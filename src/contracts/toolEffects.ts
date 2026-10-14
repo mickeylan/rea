@@ -484,6 +484,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   }),
   inspect_native_load_image: evidence,
   inspect_native_dispatch_metadata: evidence,
+  inspect_cython_extension: evidence,
   trace_native_ui_action: evidence,
   trace_native_values: evidence,
   address_name: evidence,

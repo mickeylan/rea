@@ -68,6 +68,7 @@ export const enhancedInputSchemas = {
     max_nodes: z.number().int().min(1).max(2_000).default(250),
     max_edges: z.number().int().min(1).max(5_000).default(500),
   }),
+  inspect_cython_extension: z.strictObject({}),
 } as const;
 
 export type EnhancedToolName = keyof typeof enhancedInputSchemas;

@@ -8,4 +8,10 @@ export const binaryTargetSummary = (target: BinaryTarget) => ({
   sha256: target.sha256,
   architecture: target.architecture ?? null,
   ...(target.format === "raw-binary" ? { entry_point: target.entryPoint } : {}),
+  ...(target.format === "pe"
+    ? {
+        executable_role: target.executableRole,
+        managed: target.managed,
+      }
+    : {}),
 });
