@@ -213,7 +213,9 @@ def enhance_prompt(
 
 The Cython wrapper accepts 17–25 positional values including `self`, fills the final eight slots with `None` when omitted, and rejects missing, excess, duplicate, or unexpected arguments. This confirms the order and optionality but not Python source annotations.
 
-On the successful paths, the implementation retains the cleaned/generated prompt object, constructs `PyTuple_New(1)`, stores that object at index 0, and returns the tuple. The compatible high-level return shape is therefore `(enhanced_prompt,)`. The empty-input and failure paths still require separate branch-level reconstruction.
+On the successful paths, the implementation retains the cleaned/generated prompt object, constructs `PyTuple_New(1)`, stores that object at index 0, and returns the tuple. The compatible high-level return shape is therefore `(enhanced_prompt,)`.
+
+The empty-input branch is also statically resolved: the input is converted to text, stripped, and tested for nonzero Unicode length. An empty result logs `TE Qwen Image 2.1 execute skipped: prompt is empty` and returns the module constant `DAT_180050700`, initialized as the one-element tuple `("",)`. A separate validation branch raises the retained message `图生图模式需要连接图片输入。` when image-to-image mode has no connected image input.
 
 ### Normalization helpers
 
@@ -304,7 +306,7 @@ The following remain intentionally unresolved:
 
 - API request construction, authentication, and provider-specific response handling.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
-- Exact source annotations and every empty-input/error branch of `enhance_prompt`.
+- Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Exact model-family match strings returned by `_detect_model_family`.
 - Complete local model constructor arguments and cache identity.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
