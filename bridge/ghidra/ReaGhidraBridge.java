@@ -1687,6 +1687,11 @@ public final class ReaGhidraBridge extends HeadlessScript {
         for (PcodeOpAST operation : selected) {
             operationIds.put(operation, pcodeOperationId(operation));
         }
+        List<PcodeBlockBasic> highBlocks = highFunction.getBasicBlocks();
+        Map<PcodeBlockBasic, String> blockIds = new IdentityHashMap<>();
+        for (int index = 0; index < highBlocks.size(); index += 1) {
+            blockIds.put(highBlocks.get(index), "block:" + index);
+        }
         JsonArray parameterUses = new JsonArray();
         JsonArray parameterValues = new JsonArray();
         FunctionPrototype prototype = highFunction.getFunctionPrototype();
@@ -1716,7 +1721,11 @@ public final class ReaGhidraBridge extends HeadlessScript {
             value.addProperty("sequence", operation.getSeqnum().getTime());
             value.addProperty("opcode", operation.getMnemonic());
             value.addProperty("is_dead", operation.isDead());
-            value.addProperty("block_membership", operation.getParent() == null ? "detached" : "member");
+            PcodeBlockBasic parent = operation.getParent();
+            value.addProperty("block_membership", parent == null ? "detached" : "member");
+            String blockId = parent == null ? null : blockIds.get(parent);
+            if (blockId == null) value.add("block_id", JsonNull.INSTANCE);
+            else value.addProperty("block_id", blockId);
             JsonArray inputs = new JsonArray();
             int inputCount = operation.getNumInputs();
             int capturedInputs = Math.min(inputCount, MAX_HIGH_PCODE_INPUTS_PER_OP);
@@ -1757,10 +1766,35 @@ public final class ReaGhidraBridge extends HeadlessScript {
             addPcodeEffect(effects, operation, operationId);
         }
 
+        JsonArray blockValues = new JsonArray();
+        for (PcodeBlockBasic block : highBlocks) {
+            monitor.checkCancelled();
+            JsonObject blockValue = new JsonObject();
+            blockValue.addProperty("id", blockIds.get(block));
+            blockValue.addProperty("start_address", canonicalAddress(block.getStart()));
+            JsonArray blockOperations = new JsonArray();
+            Iterator<PcodeOp> blockIterator = block.getIterator();
+            while (blockIterator.hasNext()) {
+                String retainedId = operationIds.get(blockIterator.next());
+                if (retainedId != null) blockOperations.add(retainedId);
+            }
+            blockValue.add("operation_ids", blockOperations);
+            JsonArray successorIds = new JsonArray();
+            for (int index = 0; index < block.getOutSize(); index += 1) {
+                PcodeBlock successor = block.getOut(index);
+                if (!(successor instanceof PcodeBlockBasic basic)) continue;
+                String successorId = blockIds.get(basic);
+                if (successorId != null) successorIds.add(successorId);
+            }
+            blockValue.add("successor_ids", successorIds);
+            blockValues.add(blockValue);
+        }
+
         JsonObject result = new JsonObject();
         result.addProperty("available", true);
         result.addProperty("provenance", "ghidra-high-pcode");
         result.add("operations", operationValues);
+        result.add("blocks", blockValues);
         result.add("def_use", defUse);
         result.add("parameters", parameterValues);
         result.add("parameter_uses", parameterUses);
@@ -1777,6 +1811,9 @@ public final class ReaGhidraBridge extends HeadlessScript {
         JsonArray limitations = new JsonArray();
         limitations.add(
             "High p-code is decompiler-derived, not original source or runtime behavior. is_dead preserves the Java AST flag; decoded block members can retain that flag, so block_membership separately reports actual syntax-tree membership."
+        );
+        limitations.add(
+            "High p-code block IDs and successors are decompiler-derived control-flow facts; successor order does not by itself establish taken/fallthrough semantics."
         );
         limitations.add(
             "Def-use links do not cross function boundaries and may omit memory aliasing, call side effects, or unresolved indirect flow."

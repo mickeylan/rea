@@ -262,6 +262,36 @@ const ghidraNativeValueFlow = nativeValueFlowSchema.superRefine(
         code: "custom",
         message: "Ghidra p-code operation identifiers are not unique",
       });
+    const blockIds = new Set(value.blocks.map(({ id }) => id));
+    if (blockIds.size !== value.blocks.length)
+      context.addIssue({
+        code: "custom",
+        message: "Ghidra p-code block identifiers are not unique",
+      });
+    const listedOperations = new Set<string>();
+    if (
+      value.blocks.some(
+        ({ start_address, operation_ids, successor_ids }) =>
+          !ghidraCanonicalAddressSchema.safeParse(start_address).success ||
+          operation_ids.some(
+            (operation) =>
+              !operationIds.has(operation) ||
+              (listedOperations.has(operation)
+                ? true
+                : (listedOperations.add(operation), false)),
+          ) ||
+          successor_ids.some((successor) => !blockIds.has(successor)),
+      ) ||
+      operations.some(
+        ({ block_membership, block_id }) =>
+          (block_id !== null && !blockIds.has(block_id)) ||
+          (block_membership === "member") !== (block_id !== null),
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Ghidra p-code block relationships are inconsistent",
+      });
     if (
       value.def_use.some(
         ({ definition, use }) =>

@@ -325,53 +325,86 @@ describe("Ghidra reference and value-flow completeness", () => {
     },
   );
 
-  it.each(["block_membership", "parameters", "parameter_uses"])(
-    "rejects a value-flow result missing %s",
-    (field) => {
-      const dossier = ghidraFunctionDossier();
-      if (
-        typeof dossier !== "object" ||
-        dossier === null ||
-        Array.isArray(dossier)
-      )
-        throw new TypeError("Ghidra dossier fixture is invalid");
-      const flow = dossier.native_value_flow;
-      if (typeof flow !== "object" || flow === null || Array.isArray(flow))
-        throw new TypeError("Ghidra p-code fixture is invalid");
-      if (!Array.isArray(flow.operations))
-        throw new TypeError("Ghidra operation fixture is invalid");
-      const incompleteFlow =
-        field === "block_membership"
-          ? {
-              ...flow,
-              operations: flow.operations.map((operation, index) =>
-                index !== 0 ||
-                typeof operation !== "object" ||
-                operation === null ||
-                Array.isArray(operation)
-                  ? operation
-                  : Object.fromEntries(
-                      Object.entries(operation).filter(
-                        ([key]) => key !== field,
-                      ),
-                    ),
-              ),
-            }
-          : Object.fromEntries(
-              Object.entries(flow).filter(([key]) => key !== field),
-            );
+  it.each([
+    "block_membership",
+    "block_id",
+    "blocks",
+    "parameters",
+    "parameter_uses",
+  ])("rejects a value-flow result missing %s", (field) => {
+    const dossier = ghidraFunctionDossier();
+    if (
+      typeof dossier !== "object" ||
+      dossier === null ||
+      Array.isArray(dossier)
+    )
+      throw new TypeError("Ghidra dossier fixture is invalid");
+    const flow = dossier.native_value_flow;
+    if (typeof flow !== "object" || flow === null || Array.isArray(flow))
+      throw new TypeError("Ghidra p-code fixture is invalid");
+    if (!Array.isArray(flow.operations))
+      throw new TypeError("Ghidra operation fixture is invalid");
+    const incompleteFlow =
+      field === "block_membership" || field === "block_id"
+        ? {
+            ...flow,
+            operations: flow.operations.map((operation, index) =>
+              index !== 0 ||
+              typeof operation !== "object" ||
+              operation === null ||
+              Array.isArray(operation)
+                ? operation
+                : Object.fromEntries(
+                    Object.entries(operation).filter(([key]) => key !== field),
+                  ),
+            ),
+          }
+        : Object.fromEntries(
+            Object.entries(flow).filter(([key]) => key !== field),
+          );
 
-      expect(
-        parseFunctionValueFixture(
-          "analyze_function",
-          jsonValueSchema.parse({
-            ...dossier,
-            native_value_flow: incompleteFlow,
-          }),
-        ),
-      ).toMatchObject({ ok: false, error: { _tag: "AnalysisOutputError" } });
-    },
-  );
+    expect(
+      parseFunctionValueFixture(
+        "analyze_function",
+        jsonValueSchema.parse({
+          ...dossier,
+          native_value_flow: incompleteFlow,
+        }),
+      ),
+    ).toMatchObject({ ok: false, error: { _tag: "AnalysisOutputError" } });
+  });
+
+  it("rejects inconsistent p-code block relationships", () => {
+    const dossier = ghidraFunctionDossier();
+    if (
+      typeof dossier !== "object" ||
+      dossier === null ||
+      Array.isArray(dossier)
+    )
+      throw new TypeError("Ghidra dossier fixture is invalid");
+    const flow = dossier.native_value_flow;
+    if (typeof flow !== "object" || flow === null || Array.isArray(flow))
+      throw new TypeError("Ghidra p-code fixture is invalid");
+    expect(
+      parseFunctionValueFixture("analyze_function", {
+        ...dossier,
+        native_value_flow: {
+          ...flow,
+          blocks: [
+            {
+              id: "block:0",
+              start_address: "0x401000",
+              operation_ids: ["0x401000#missing"],
+              successor_ids: ["block:missing"],
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisOutputError" },
+    });
+  });
 
   it("rejects p-code relationships that refer to omitted operation IDs", () => {
     const dossier = ghidraFunctionDossier();

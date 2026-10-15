@@ -193,6 +193,7 @@ export const ghidraFunctionDossier = (): JsonValue => {
           opcode: "COPY",
           is_dead: false,
           block_membership: "member",
+          block_id: "block:0",
           inputs: [
             {
               kind: "constant",
@@ -207,6 +208,14 @@ export const ghidraFunctionDossier = (): JsonValue => {
             location: "register:0x0",
             constant_hex: null,
           },
+        },
+      ],
+      blocks: [
+        {
+          id: "block:0",
+          start_address: "0x401000",
+          operation_ids: ["0x401000#0"],
+          successor_ids: [],
         },
       ],
       def_use: [],

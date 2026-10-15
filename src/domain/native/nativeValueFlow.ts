@@ -19,8 +19,17 @@ export const nativePcodeOperationSchema = z.strictObject({
   opcode: z.string().min(1),
   is_dead: z.boolean(),
   block_membership: z.enum(["member", "detached", "unavailable"]),
+  block_id: z.string().min(1).nullable(),
   inputs: z.array(nativeVarnodeSchema),
   output: nativeVarnodeSchema.nullable(),
+});
+
+/** One decompiler high-p-code basic block and its retained relationships. */
+export const nativePcodeBlockSchema = z.strictObject({
+  id: z.string().min(1),
+  start_address: z.string().min(1),
+  operation_ids: z.array(z.string().min(1)),
+  successor_ids: z.array(z.string().min(1)),
 });
 
 /** A def-use relation between operations in one recovered HighFunction. */
@@ -51,6 +60,7 @@ export const nativeValueFlowSchema = z.discriminatedUnion("available", [
     available: z.literal(true),
     provenance: z.literal("ghidra-high-pcode"),
     operations: z.array(nativePcodeOperationSchema),
+    blocks: z.array(nativePcodeBlockSchema),
     def_use: z.array(nativePcodeDefUseSchema),
     effects: z.array(nativePcodeEffectSchema),
     parameters: z.array(

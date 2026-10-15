@@ -43,7 +43,9 @@
 
 阶段 2–3 的领域边界已开始落地：`cythonWrapperConventionObservationSchema` 接收 adapter 归一化后的 wrapper 事实，`projectCythonCallingConventionCandidate` 将其投影为候选调用约定。位置参数上下界、关键字顺序、槽位名称、必填/可选状态和静态默认值分别保留 Known/Unknown；冲突观察不会被择一提升为事实。`CythonWrapperConventionPort` 与 `CythonWrapperConventionService` 已提供 application 层边界，验证 adapter 输出并保留 provider、analysis profile、limitations 和 locations。
 
-`GhidraCythonWrapperConventionAdapter` 已接入现有结构化 `analyze_function` dossier。首个保守版本只投影 wrapper 身份、直接 callee 候选、call-site 来源地址和 value-flow 截断状态；它明确不读取 pseudocode 文本，也不会将任意 callee 宣称为 implementation body。参数范围、关键字表和默认槽位继续保持 Unknown，直到 Ghidra bridge 能提供经真实 fixture 验证的结构化 parser/table/control-flow 事实。因此该能力仍不公开为 CLI/MCP 操作。
+`GhidraCythonWrapperConventionAdapter` 已接入现有结构化 `analyze_function` dossier。首个保守版本只投影 wrapper 身份、直接 callee 候选、call-site 来源地址和 value-flow 截断状态；它明确不读取 pseudocode 文本，也不会将任意 callee 宣称为 implementation body。
+
+Ghidra bridge 的通用 high-p-code contract 现已进一步包含稳定的 `block_id`、每个 block 的起始地址、保留 operation IDs 和 successor IDs。TypeScript 边界严格检查 block/operation/successor 引用、唯一性与地址格式。该信息仍只是 decompiler CFG 事实，不表达 Cython 参数语义；参数范围、关键字表和默认槽位继续保持 Unknown，直到真实 fixture 能证明完整 parser path。当前 Windows native controls 与 6.5.0 版本不匹配，因此本轮真实 Qwen provider 验证明确未完成，该能力仍不公开为 CLI/MCP 操作。
 
 ---
 
