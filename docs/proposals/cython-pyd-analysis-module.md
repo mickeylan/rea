@@ -41,7 +41,7 @@
 
 这些阶段应共享 CLI/MCP contracts、Evidence 与 snapshot 语义，并保持 provider-neutral。样本专用解释只能出现在分析报告或测试 fixture 中。
 
-阶段 2–3 的领域边界已开始落地：`cythonWrapperConventionObservationSchema` 接收 adapter 归一化后的 wrapper 事实，`projectCythonCallingConventionCandidate` 将其投影为候选调用约定。位置参数上下界、关键字顺序、槽位名称、必填/可选状态和静态默认值分别保留 Known/Unknown；冲突观察不会被择一提升为事实。该边界不解析 Ghidra 伪代码、不混淆原生 ABI 签名与 Python 调用约定，也尚未公开为 CLI/MCP 操作，直到至少一个 provider adapter 能提供受测试的归一化观察。
+阶段 2–3 的领域边界已开始落地：`cythonWrapperConventionObservationSchema` 接收 adapter 归一化后的 wrapper 事实，`projectCythonCallingConventionCandidate` 将其投影为候选调用约定。位置参数上下界、关键字顺序、槽位名称、必填/可选状态和静态默认值分别保留 Known/Unknown；冲突观察不会被择一提升为事实。`CythonWrapperConventionPort` 与 `CythonWrapperConventionService` 已提供 application 层边界，验证 adapter 输出并保留 provider、analysis profile、limitations 和 locations。该边界不解析 Ghidra 伪代码、不混淆原生 ABI 签名与 Python 调用约定，也尚未公开为 CLI/MCP 操作，直到至少一个 provider adapter 能提供受测试的归一化观察。
 
 ---
 
