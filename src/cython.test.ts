@@ -106,6 +106,7 @@ describe("Cython extension observations", () => {
   });
 });
 
+// oxlint-disable-next-line max-lines-per-function -- keep candidate conflict and provenance semantics together.
 describe("Cython wrapper convention candidates", () => {
   it("projects a normalized wrapper convention with retained evidence", () => {
     const candidate = projectCythonCallingConventionCandidate({
@@ -129,6 +130,17 @@ describe("Cython wrapper convention candidates", () => {
           parameter_ordinal: 2,
           dispatch_address: "0x1038",
           known_case_values: [2, 3, 4],
+          mappings: [
+            { case_value: 2, target_address: "0x2000", confidence: "high" },
+            { case_value: 3, target_address: "0x2010", confidence: "high" },
+            { case_value: 4, target_address: "0x2020", confidence: "high" },
+            {
+              case_value: null,
+              target_address: "0x2030",
+              confidence: "medium",
+            },
+          ],
+          default_targets: [],
           entry_counts: [3],
           unknown_mapping_count: 1,
           default_target_count: 0,

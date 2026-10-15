@@ -197,6 +197,19 @@ const observeJumpTableCandidates = (
         parameter_ordinal: parameterUses[0]!.ordinal,
         dispatch_address: table.dispatch_address,
         known_case_values: knownCaseValues,
+        mappings: table.mappings.map(
+          ({ case_value, target_address, confidence }) => ({
+            case_value,
+            target_address,
+            confidence,
+          }),
+        ),
+        default_targets: table.default_targets.map(
+          ({ target_address, confidence }) => ({
+            target_address,
+            confidence,
+          }),
+        ),
         entry_counts: entryCounts,
         unknown_mapping_count: table.mappings.filter(
           ({ case_value }) => case_value === null,

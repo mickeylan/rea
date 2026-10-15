@@ -59,7 +59,7 @@ Bridge 会继续遍历但不序列化超预算 operation，使 `omitted_operatio
 
 Adapter 现只从完整极性分支中保留以下结构化候选：分支条件必须由整数比较直接定义，比较必须恰有一个安全整数常量，另一个 operand 必须由 `parameter_uses` 直接归属于一个函数参数，比较与分支的输入定义均须完整。它不会把候选直接提升为位置参数范围。真实 `enhance_prompt` wrapper 得到两个候选：ordinal 3 与 `0` 的 `not-equal` 比较，以及 ordinal 2 与 `17` 的 signed-less-than 比较。
 
-Adapter 还会把 `BRANCHIND` 的直接 parameter lineage 与已验证的 native API jump-table facts 合并为独立候选，保留 known case values、表 entry counts、未知映射数量和 default 是否有证据。真实 wrapper 的 ordinal 2 dispatch 候选分别为：完整 case `0..25`、26-entry table、另有 1 个未知映射且 default 未知；以及已知 `17,19..25`、9-entry table、2 个未知映射且 default 未知。由于这些缺口仍无法证明所有 accepted/error paths，最终 `positional` 继续保持 Unknown，不从 case 最大值猜测上界。该能力仍不公开为 CLI/MCP 操作。
+Adapter 还会把 `BRANCHIND` 的直接 parameter lineage 与已验证的 native API jump-table facts 合并为独立候选，保留每个 case/unknown/default 的目标地址与置信度、known case values、表 entry counts、未知映射数量和 default 是否有证据。真实 wrapper 的 ordinal 2 dispatch 候选分别为：完整 case `0..25`、26-entry table、另有 1 个未知映射且 default 未知；以及已知 `17,19..25`、9-entry table、2 个未知映射且 default 未知。候选现在足以继续做目标路径分类，但这些缺口仍无法证明所有 accepted/error paths，因此最终 `positional` 继续保持 Unknown，不从 case 最大值猜测上界。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 
