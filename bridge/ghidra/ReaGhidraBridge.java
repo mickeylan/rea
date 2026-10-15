@@ -1677,8 +1677,8 @@ public final class ReaGhidraBridge extends HeadlessScript {
             monitor.checkCancelled();
             PcodeOpAST operation = operations.next();
             if (selected.size() >= MAX_HIGH_PCODE_OPS) {
-                omittedOperationsLowerBound = 1;
-                break;
+                omittedOperationsLowerBound += 1;
+                continue;
             }
             selected.add(operation);
         }
@@ -1822,7 +1822,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
             "Memory read/write effects include stack and temporary memory operations; they do not identify persistent state or business meaning."
         );
         limitations.add(
-            "Operation, input, and def-use limits can truncate large functions; inspect truncation, omitted lower bounds, and known omitted counts before drawing conclusions."
+            "Operation, input, and def-use limits can truncate large functions; omitted_operations_lower_bound counts every operation visited after the retention limit, while omitted input/edge counts remain bounded to retained operations."
         );
         limitations.add(
             "Known omitted-edge counts cover links omitted from retained operations; omitted operations may contain additional uncounted links."

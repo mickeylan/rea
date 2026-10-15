@@ -47,7 +47,9 @@
 
 Ghidra bridge 的通用 high-p-code contract 现已进一步包含稳定的 `block_id`、每个 block 的起始地址、保留 operation IDs 和 successor IDs。TypeScript 边界严格检查 block/operation/successor 引用、唯一性与地址格式。该信息仍只是 decompiler CFG 事实，不表达 Cython 参数语义。
 
-使用与 6.5.0 匹配且经 manifest/digest 验证的 Windows native controls 后，真实 Qwen `.pyd` 已成功返回该新 contract：`INPUT_TYPES` body 为 3,000 个保留 operations、330 个 blocks，`enhance_prompt` wrapper 为 3,000 个保留 operations、140 个 blocks；两者均无 null block identity 或悬空 successor。但两者也都命中当前 3,000-operation 上限并报告 `truncated=true`，因此不能据此宣称完整 parser path，也不能提升参数范围、关键字表或默认槽位。下一步应设计有界的定向 parser-fact 提取，而不是无条件扩大完整 p-code 输出。该能力仍不公开为 CLI/MCP 操作。
+使用与 6.5.0 匹配且经 manifest/digest 验证的 Windows native controls 后，真实 Qwen `.pyd` 已成功返回该新 contract：`INPUT_TYPES` body 为 3,000 个保留 operations、330 个 blocks，`enhance_prompt` wrapper 为 3,000 个保留 operations、140 个 blocks；两者均无 null block identity 或悬空 successor。
+
+Bridge 现在会继续遍历但不序列化超预算 operation，使 `omitted_operations_lower_bound` 对本次完整迭代给出精确计数而不增加响应大小。真实测量为：`INPUT_TYPES` body 共 19,645 个 operations（遗漏 16,645），`enhance_prompt` wrapper 共 10,097 个（遗漏 7,097）。这说明直接把上限扩大到完整函数会显著增加序列化、token 和内存成本，不符合有界分析要求。两者继续报告 `truncated=true`，因此不能宣称完整 parser path，也不能提升参数范围、关键字表或默认槽位。下一步应返回比较/分支/调用根及其 def-use/CFG 闭包的定向切片，而不是扩大完整 p-code 输出。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 
