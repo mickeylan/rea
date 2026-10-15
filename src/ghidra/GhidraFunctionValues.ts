@@ -297,7 +297,13 @@ const ghidraNativeValueFlow = nativeValueFlowSchema.superRefine(
         ({ definition, use }) =>
           !operationIds.has(definition) || !operationIds.has(use),
       ) ||
-      value.effects.some(({ operation }) => !operationIds.has(operation))
+      value.effects.some(
+        ({ operation, kind, branch_target_block }) =>
+          !operationIds.has(operation) ||
+          (branch_target_block !== null &&
+            !blockIds.has(branch_target_block)) ||
+          (kind !== "conditional_branch" && branch_target_block !== null),
+      )
     )
       context.addIssue({
         code: "custom",

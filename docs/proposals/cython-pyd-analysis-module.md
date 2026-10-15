@@ -51,7 +51,9 @@ Ghidra bridge 的通用 high-p-code contract 现已进一步包含稳定的 `blo
 
 Bridge 会继续遍历但不序列化超预算 operation，使 `omitted_operations_lower_bound` 对本次完整迭代给出精确计数而不增加响应大小。真实测量为：`INPUT_TYPES` body 共 19,645 个 operations（遗漏 16,645），`enhance_prompt` wrapper 共 10,097 个（遗漏 7,097）。这说明直接把上限扩大到完整函数会显著增加序列化、token 和内存成本，不符合有界分析要求。
 
-同一 3,000-operation 预算现在先保留全部比较、分支、调用和返回根，再保留其 def-use 祖先，最后才按 provider 顺序填充余量。Bridge 单独报告总根数与保留根数。真实 Qwen 验证中，`INPUT_TYPES` body 的 703/703 个语义根和 `enhance_prompt` wrapper 的 308/308 个根均已保留。由于部分祖先和普通 operations 仍可能缺失，两者继续报告 `truncated=true`，不能据此宣称完整 parser path；但 adapter 现在能区分“根已齐全、祖先可能缺失”与“根本身被遗漏”。下一步是在 TypeScript 中从完整根集合安全筛选 argument-count 候选，而非扩大输出。该能力仍不公开为 CLI/MCP 操作。
+同一 3,000-operation 预算现在先保留全部比较、分支、调用和返回根，再保留其 def-use 祖先，最后才按 provider 顺序填充余量。Bridge 单独报告总根数与保留根数。真实 Qwen 验证中，`INPUT_TYPES` body 的 703/703 个语义根和 `enhance_prompt` wrapper 的 308/308 个根均已保留。
+
+每个 operation 现在另有 `input_definitions_complete`，条件分支 effect 在能与 high-pcode block 起始地址精确匹配时携带 `branch_target_block`。真实样本中，`INPUT_TYPES` body 的 165/165 个条件分支均有目标 block 且输入定义完整；`enhance_prompt` wrapper 的 107 个条件分支全部输入定义完整，其中 105 个能精确解析目标 block，另外 2 个保持 Unknown。完整函数仍报告 `truncated=true`，但 adapter 已可仅从定义闭包完整且目标明确的分支筛选 argument-count 候选；不会把 unresolved 分支当作 fallthrough 或猜测边极性。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 

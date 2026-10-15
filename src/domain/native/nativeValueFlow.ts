@@ -20,6 +20,7 @@ export const nativePcodeOperationSchema = z.strictObject({
   is_dead: z.boolean(),
   block_membership: z.enum(["member", "detached", "unavailable"]),
   block_id: z.string().min(1).nullable(),
+  input_definitions_complete: z.boolean(),
   inputs: z.array(nativeVarnodeSchema),
   output: nativeVarnodeSchema.nullable(),
 });
@@ -52,6 +53,7 @@ export const nativePcodeEffectSchema = z.strictObject({
   ]),
   operand_input: z.number().int().nonnegative().nullable(),
   value_input: z.number().int().nonnegative().nullable(),
+  branch_target_block: z.string().min(1).nullable(),
 });
 
 /** Bounded data-flow observations; STORE is not necessarily a persistent/global write. */

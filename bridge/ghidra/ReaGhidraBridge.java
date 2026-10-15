@@ -1747,6 +1747,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
             if (blockId == null) value.add("block_id", JsonNull.INSTANCE);
             else value.addProperty("block_id", blockId);
             JsonArray inputs = new JsonArray();
+            boolean inputDefinitionsComplete = true;
             int inputCount = operation.getNumInputs();
             int capturedInputs = Math.min(inputCount, MAX_HIGH_PCODE_INPUTS_PER_OP);
             for (int inputIndex = 0; inputIndex < capturedInputs; inputIndex += 1) {
@@ -1767,6 +1768,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
                     if (definition instanceof PcodeOpAST astDefinition) {
                         String definitionId = operationIds.get(astDefinition);
                         if (definitionId == null || defUse.size() >= MAX_HIGH_PCODE_DEF_USE_EDGES) {
+                            inputDefinitionsComplete = false;
                             omittedEdges += 1;
                         } else {
                             JsonObject edge = new JsonObject();
@@ -1779,11 +1781,13 @@ public final class ReaGhidraBridge extends HeadlessScript {
                 }
             }
             omittedInputs += inputCount - capturedInputs;
+            if (capturedInputs != inputCount) inputDefinitionsComplete = false;
+            value.addProperty("input_definitions_complete", inputDefinitionsComplete);
             value.add("inputs", inputs);
             Varnode output = operation.getOutput();
             value.add("output", output == null ? JsonNull.INSTANCE : varnodeValue(output));
             operationValues.add(value);
-            addPcodeEffect(effects, operation, operationId);
+            addPcodeEffect(effects, operation, operationId, highBlocks, blockIds);
         }
 
         JsonArray blockValues = new JsonArray();
@@ -1938,7 +1942,9 @@ public final class ReaGhidraBridge extends HeadlessScript {
     private void addPcodeEffect(
         JsonArray destination,
         PcodeOp operation,
-        String operationId
+        String operationId,
+        List<PcodeBlockBasic> highBlocks,
+        Map<PcodeBlockBasic, String> blockIds
     ) {
         String kind = null;
         Integer operandInput = null;
@@ -1983,7 +1989,26 @@ public final class ReaGhidraBridge extends HeadlessScript {
             "value_input",
             valueInput == null ? JsonNull.INSTANCE : GSON.toJsonTree(valueInput)
         );
+        String branchTargetBlock = operation.getOpcode() == PcodeOp.CBRANCH
+            ? resolvePcodeBranchTargetBlock(operation, highBlocks, blockIds)
+            : null;
+        if (branchTargetBlock == null) effect.add("branch_target_block", JsonNull.INSTANCE);
+        else effect.addProperty("branch_target_block", branchTargetBlock);
         destination.add(effect);
+    }
+
+    private String resolvePcodeBranchTargetBlock(
+        PcodeOp operation,
+        List<PcodeBlockBasic> highBlocks,
+        Map<PcodeBlockBasic, String> blockIds
+    ) {
+        if (operation.getNumInputs() < 1) return null;
+        Address target = operation.getInput(0).getAddress();
+        if (target == null || target.isConstantAddress()) return null;
+        for (PcodeBlockBasic block : highBlocks) {
+            if (target.equals(block.getStart())) return blockIds.get(block);
+        }
+        return null;
     }
 
     private JsonElement addressName(JsonObject params) {

@@ -194,6 +194,7 @@ export const ghidraFunctionDossier = (): JsonValue => {
           is_dead: false,
           block_membership: "member",
           block_id: "block:0",
+          input_definitions_complete: true,
           inputs: [
             {
               kind: "constant",

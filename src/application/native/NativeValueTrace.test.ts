@@ -34,9 +34,21 @@ const node = (id: string, address: string, opcode: string) => ({
   opcode,
   is_dead: true,
   block_membership: "member",
+  block_id: "block:0",
+  input_definitions_complete: true,
   inputs: [scalar, scalar],
   output: scalar,
 });
+const blocksForOperations = (
+  operations: readonly ReturnType<typeof node>[],
+) => [
+  {
+    id: "block:0",
+    start_address: operations[0]?.address ?? "0x0",
+    operation_ids: operations.map(({ id }) => id),
+    successor_ids: [],
+  },
+];
 const analysis: AnalysisOperationPort = {
   execute: async (operation, parameters) => {
     if (operation === "resolve_native_call_targets")
@@ -85,6 +97,14 @@ const analysis: AnalysisOperationPort = {
             operations: callee
               ? [node("return", "0x2000", "RETURN")]
               : [node("call", "0x1000", "CALL")],
+            blocks: [
+              {
+                id: "block:0",
+                start_address: callee ? "0x2000" : "0x1000",
+                operation_ids: [callee ? "return" : "call"],
+                successor_ids: [],
+              },
+            ],
             def_use: [],
             effects: [],
             parameters: callee
@@ -93,6 +113,8 @@ const analysis: AnalysisOperationPort = {
             parameter_uses: callee
               ? [{ ordinal: 0, use: "return", input_index: 1 }]
               : [],
+            semantic_roots_total: 1,
+            semantic_roots_retained: 1,
             truncated: false,
             omitted_operations_lower_bound: 0,
             known_omitted_inputs: 0,
@@ -112,13 +134,18 @@ describe("native value parameter-use node membership", () => {
     const parameterUseCount = 12_000;
     const base = functionDossierSchema.parse(ghidraFunctionDossier());
     const procedureAddress = base.procedure.address;
+    const largeOperations = Array.from(
+      { length: operationCount },
+      (_, index) => ({
+        ...node(`operation-${String(index)}`, procedureAddress, "MULTIEQUAL"),
+        inputs: [scalar, scalar, scalar, scalar],
+      }),
+    );
     const largeFlow = {
       available: true as const,
       provenance: "ghidra-high-pcode" as const,
-      operations: Array.from({ length: operationCount }, (_, index) => ({
-        ...node(`operation-${String(index)}`, procedureAddress, "MULTIEQUAL"),
-        inputs: [scalar, scalar, scalar, scalar],
-      })),
+      operations: largeOperations,
+      blocks: blocksForOperations(largeOperations),
       def_use: [],
       effects: [],
       parameters: [{ ordinal: 0, name: "value", data_type: "/int" }],
@@ -127,6 +154,8 @@ describe("native value parameter-use node membership", () => {
         use: `operation-${String(index % operationCount)}`,
         input_index: Math.floor(index / operationCount),
       })),
+      semantic_roots_total: 0,
+      semantic_roots_retained: 0,
       truncated: false,
       omitted_operations_lower_bound: 0,
       known_omitted_inputs: 0,
@@ -183,7 +212,9 @@ describe("native value parameter-use node membership", () => {
       truncated: true,
     });
   });
+});
 
+describe("native value parameter identity collisions", () => {
   it.each([3, 4])(
     "keeps parameter identity separate from colliding operation IDs with max_nodes=%i",
     async (max_nodes) => {
@@ -200,10 +231,20 @@ describe("native value parameter-use node membership", () => {
               node("parameter:0#1", address, "COPY"),
               node("use", address, "COPY"),
             ],
+            blocks: [
+              {
+                id: "block:0",
+                start_address: address,
+                operation_ids: ["parameter:0", "parameter:0#1", "use"],
+                successor_ids: [],
+              },
+            ],
             def_use: [],
             effects: [],
             parameters: [{ ordinal: 0, name: "value", data_type: "/int" }],
             parameter_uses: [{ ordinal: 0, use: "use", input_index: 1 }],
+            semantic_roots_total: 0,
+            semantic_roots_retained: 0,
             truncated: false,
             omitted_operations_lower_bound: 0,
             known_omitted_inputs: 0,
@@ -278,10 +319,31 @@ const nativeFlowDossier = (
       available: true,
       provenance: "ghidra-high-pcode",
       operations,
+      blocks: blocksForOperations(operations),
       def_use: [],
       effects: [],
       parameters,
       parameter_uses: [],
+      semantic_roots_total: operations.filter(({ opcode }) =>
+        [
+          "CALL",
+          "CALLIND",
+          "CBRANCH",
+          "BRANCH",
+          "BRANCHIND",
+          "RETURN",
+        ].includes(opcode),
+      ).length,
+      semantic_roots_retained: operations.filter(({ opcode }) =>
+        [
+          "CALL",
+          "CALLIND",
+          "CBRANCH",
+          "BRANCH",
+          "BRANCHIND",
+          "RETURN",
+        ].includes(opcode),
+      ).length,
       truncated: false,
       omitted_operations_lower_bound: 0,
       known_omitted_inputs: 0,

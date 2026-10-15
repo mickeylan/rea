@@ -328,6 +328,7 @@ describe("Ghidra reference and value-flow completeness", () => {
   it.each([
     "block_membership",
     "block_id",
+    "input_definitions_complete",
     "blocks",
     "parameters",
     "parameter_uses",
@@ -347,7 +348,9 @@ describe("Ghidra reference and value-flow completeness", () => {
     if (!Array.isArray(flow.operations))
       throw new TypeError("Ghidra operation fixture is invalid");
     const incompleteFlow =
-      field === "block_membership" || field === "block_id"
+      field === "block_membership" ||
+      field === "block_id" ||
+      field === "input_definitions_complete"
         ? {
             ...flow,
             operations: flow.operations.map((operation, index) =>
