@@ -206,6 +206,9 @@ code unit, matching the original bytes identified by the artifact digest.
 
 Plain `.ts` artifact sources use TypeScript syntax without JSX, including
 angle-bracket type assertions. `.tsx` and `.jsx` retain JSX parsing.
+JavaScript sources use JavaScript grammar with JSX, never TypeScript syntax,
+so valid JavaScript that TypeScript reads differently keeps its JavaScript
+meaning.
 
 Relative TypeScript imports can name their emitted `.js`, `.mjs`, or `.cjs`
 counterparts while resolving to inventoried source files. This substitution
@@ -272,6 +275,12 @@ RPC client syntax also contributes network endpoint candidates, in both
   selection set starting with a field name — or in a precompiled
   `OperationDefinition` document object. A graphql-tag `loc.source.body` copy is
   not reported twice. Anonymous operations are not reported.
+
+Literal link options and precompiled document fields follow object property
+order: the final definition owns the key. A later spread, dynamic computed key,
+method, or accessor can make a field unknown, so an overwritten literal is not
+reported as the endpoint or operation. A final explicit property after a spread
+or dynamic key remains usable.
 
 A procedure path is the server-side procedure name, not a resolved URL; the
 transport URL depends on the link configuration and batching. When the proxy is
