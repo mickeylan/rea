@@ -1,6 +1,6 @@
 # TE_Qwen Image 2.1 `.pyd` analysis report
 
-> Updated: 2026-10-14
+> Updated: 2026-10-15
 > Target: `TE_Qwen_Image_2_1_Prompt_Enhancer.pyd`
 > SHA-256: `17aa8af94035109e882fc4477f21e527d0fef519d38c98c3a730fcda62a42b42`
 > Provider: Ghidra 12.1.4 through REA
@@ -22,6 +22,7 @@ The public `inspect_cython_extension` workflow reported:
 - 87 qualified-name candidates, 13 Cython markers, and one retained source-path observation.
 - Cython runtime identity candidate `_cython_3_1_2limited_fastcallnofinalize`.
 - Retained build coordinate `F:\ComfyUI_portable_TE_v260130\ComfyUI\custom_nodes\TE_image\source_py_backup\TE_Qwen_Image_2_1_Prompt_Enhancer.c`.
+- Re-verification on 2026-10-15 produced derived Evidence `ev_2c00ace462678bcea9d66098645aca58ce9905aa81806a9f3e3c3b0a9e9555f6` with `workflow_revision: 1`, complete inventory coverage, and the target digest above.
 
 The target contains the qualified class and method observations:
 
