@@ -260,11 +260,25 @@ Several duplicate defined strings (`prompt`, `image`, `temperature`) had no dire
 - `TE Qwen Image 2.1 local model unloading loaded=%s`
 - `TE Qwen Image 2.1 local model unloaded`
 
-The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. It also stores a constructed three-element tuple into the storage object and later reads that state for reuse checks. This supports a derived model-cache lifecycle: reuse aligned loaded state, otherwise unload/reset and create a new local model. Exact tuple member identities, cache keys, and all constructor arguments remain unknown.
+The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. The retained storage value is constructed with the exact named fields `llm`, `settings`, and `chat_handler`. Reuse occurs when an existing storage object has a non-`None` `model` whose `settings` compare equal to the newly constructed settings dictionary; that path logs `TE Qwen Image 2.1 local model reusing model=%s` and returns the existing `model`. A mismatch proceeds to a new load and replaces the storage state.
+
+The settings dictionary passed into `llama_cpp.Llama` contains observed keys `model_path`, `chat_handler`, `n_ctx`, `n_gpu_layers`, and `verbose`; `n_ctx` defaults from `DEFAULT_CONTEXT_LENGTH` and is coerced with `int`, while `verbose` is set false. If `_llama_argument_supported("ctx_checkpoints")` reports support, the dictionary also receives `ctx_checkpoints`. The exact values associated with `model_path`, `chat_handler`, `n_gpu_layers`, and `ctx_checkpoints` still require deeper value-flow reconstruction.
 
 ### Family selection
 
-`_detect_model_family` is wrapper `FUN_180006ee0`, range `0x180006ee0-0x18000742a`, 1,355 bytes. It validates a string `model_name`, normalizes it through Python method calls, and performs three ordered containment tests before returning one of four retained global values.
+`_detect_model_family` is wrapper `FUN_180006ee0`, range `0x180006ee0-0x18000742a`, 1,355 bytes. It validates a string `model_name`, applies `os.path.basename`, lowercases it, and uses the exact ordered routing below:
+
+```python
+def _detect_model_family(model_name):
+    normalized = os.path.basename(str(model_name) if model_name else "").lower()
+    if "qwen3.8" in normalized:
+        return "Qwen3.8-VL"
+    if "qwen3.6" in normalized:
+        return "Qwen3.6-VL"
+    if "qwen3.5" in normalized:
+        return "Qwen3.5-VL"
+    return "Qwen3-VL"
+```
 
 Related handler observations are:
 
@@ -275,7 +289,7 @@ Related handler observations are:
 - `Qwen3VLChatHandler`
 - `_create_multimodal_handler`
 
-**Derived:** the module distinguishes at least three recognized model-name families plus a fallback and selects text or vision chat formatting accordingly. The exact substrings associated with each returned family are stored in initialized global objects and are not yet resolved.
+The family strings and return values above are direct static observations. Handler dispatch then distinguishes Qwen 3.5, Qwen 3.6, Qwen 3.8, and fallback Qwen 3 VL behavior; exact constructor selection for every family remains under analysis.
 
 ### GGUF shard validation
 
@@ -307,8 +321,7 @@ The following remain intentionally unresolved:
 - API request construction, authentication, and provider-specific response handling.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
-- Exact model-family match strings returned by `_detect_model_family`.
-- Complete local model constructor arguments and cache identity.
+- Remaining local model constructor values (`model_path`, `chat_handler`, `n_gpu_layers`, and optional `ctx_checkpoints`) and their exact contribution to cache identity.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
 
 ## Reproduction commands
