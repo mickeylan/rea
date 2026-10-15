@@ -212,6 +212,11 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
             }),
           ),
           reachability_complete: z.boolean(),
+          outcome: z.enum([
+            "python-error-api-reachable",
+            "no-python-error-api-observed",
+            "unresolved",
+          ]),
         }),
       ),
       default_targets: z.array(
@@ -226,6 +231,11 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
             }),
           ),
           reachability_complete: z.boolean(),
+          outcome: z.enum([
+            "python-error-api-reachable",
+            "no-python-error-api-observed",
+            "unresolved",
+          ]),
         }),
       ),
       entry_counts: z.array(z.number().int().nonnegative()),

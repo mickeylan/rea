@@ -149,6 +149,7 @@ describe("Cython wrapper convention candidates", () => {
               confidence: "high",
               reachable_calls: [],
               reachability_complete: true,
+              outcome: "no-python-error-api-observed",
             },
             {
               case_value: 3,
@@ -156,6 +157,7 @@ describe("Cython wrapper convention candidates", () => {
               confidence: "high",
               reachable_calls: [],
               reachability_complete: true,
+              outcome: "no-python-error-api-observed",
             },
             {
               case_value: 4,
@@ -163,6 +165,7 @@ describe("Cython wrapper convention candidates", () => {
               confidence: "high",
               reachable_calls: [],
               reachability_complete: true,
+              outcome: "no-python-error-api-observed",
             },
             {
               case_value: null,
@@ -170,6 +173,7 @@ describe("Cython wrapper convention candidates", () => {
               confidence: "medium",
               reachable_calls: [],
               reachability_complete: false,
+              outcome: "unresolved",
             },
           ],
           default_targets: [],

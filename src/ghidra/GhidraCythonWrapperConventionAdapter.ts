@@ -263,7 +263,11 @@ const createReachability = (
   return (targetAddress: string) => {
     const start = blocksByStart.get(targetAddress);
     if (start === undefined)
-      return { reachable_calls: [], reachability_complete: false };
+      return {
+        reachable_calls: [],
+        reachability_complete: false,
+        outcome: "unresolved" as const,
+      };
     const pending = [start.id];
     const visited = new Set<string>();
     const calls = new Map<
@@ -298,13 +302,22 @@ const createReachability = (
       }
       for (const successor of block.successor_ids) pending.push(successor);
     }
+    const reachableCalls = [...calls.values()].sort(
+      (left, right) =>
+        left.call_site.localeCompare(right.call_site) ||
+        left.target_address.localeCompare(right.target_address),
+    );
+    const reachesPythonErrorApi = reachableCalls.some(({ target_name }) =>
+      target_name?.endsWith("::PyErr_Format"),
+    );
     return {
-      reachable_calls: [...calls.values()].sort(
-        (left, right) =>
-          left.call_site.localeCompare(right.call_site) ||
-          left.target_address.localeCompare(right.target_address),
-      ),
+      reachable_calls: reachableCalls,
       reachability_complete: complete,
+      outcome: !complete
+        ? ("unresolved" as const)
+        : reachesPythonErrorApi
+          ? ("python-error-api-reachable" as const)
+          : ("no-python-error-api-observed" as const),
     };
   };
 };

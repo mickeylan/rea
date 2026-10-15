@@ -61,7 +61,7 @@ Adapter 现只从完整极性分支中保留以下结构化候选：分支条件
 
 Adapter 还会把 `BRANCHIND` 的直接 parameter lineage 与已验证的 native API jump-table facts 合并为独立候选，保留每个 case/unknown/default 的目标地址与置信度、known case values、表 entry counts、未知映射数量和 default 是否有证据。真实 wrapper 的 ordinal 2 dispatch 候选分别为：完整 case `0..25`、26-entry table、另有 1 个未知映射且 default 未知；以及已知 `17,19..25`、9-entry table、2 个未知映射且 default 未知。
 
-每个映射目标现在还携带有界 CFG 遍历得到的 direct-call reachability 摘要及其完整性。真实验证中，两表已知的 `17..25` 目标均可达 `FUN_180027200`；共同未知目标 `0x180026ba9` 只能观测到清理/错误调用（包括 `PyErr_Format`），不能到达 body；第二表另一未知目标 `0x18002658b` 可达 body。所有这些遍历均闭合。
+每个映射目标现在还携带有界 CFG 遍历得到的 direct-call reachability 摘要及其完整性，并按结构化 CPython 调用分为 `python-error-api-reachable`、`no-python-error-api-observed` 或 `unresolved`。这不是 accepted/error 的最终判定：没有观测到错误 API 不证明成功。真实验证中，两表已知的 `17..25` 目标均可达 `FUN_180027200` 且遍历闭合；共同未知目标 `0x180026ba9` 可达 `PyErr_Format`、不能到达 body；第二表另一未知目标 `0x18002658b` 可达 body。
 
 领域投影现将语义拆为两组独立候选：由完整参数 lower-bound 比较产生 `required_slot_count_candidates`，由 parameter-driven dispatch 的最大已知 case 产生 `maximum_positional_count_candidates`；候选同时保留 default、unknown mapping 和 case completeness。最终输出另有独立的 `required_slot_count` 与 `maximum_positional_count` Known/Unknown 字段。当前 promotion gate 要求 parser-state 身份、success/error 路径和 out-of-range rejection 闭合，故两者均明确为 Unknown。真实 wrapper 仍保留 required-slot 候选 `17` 和 maximum-positional 候选 `25`，但消费者无法再误把候选当成已证明结论，也不会把“17 个槽位必须最终被填充”错误解释为“调用者必须提供至少 17 个位置参数”。该能力仍不公开为 CLI/MCP 操作。
 
