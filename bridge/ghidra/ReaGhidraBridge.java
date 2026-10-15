@@ -1670,17 +1670,37 @@ public final class ReaGhidraBridge extends HeadlessScript {
             return unavailable;
         }
 
-        List<PcodeOpAST> selected = new ArrayList<>();
-        int omittedOperationsLowerBound = 0;
+        List<PcodeOpAST> allOperations = new ArrayList<>();
         Iterator<PcodeOpAST> operations = highFunction.getPcodeOps();
         while (operations.hasNext()) {
             monitor.checkCancelled();
-            PcodeOpAST operation = operations.next();
-            if (selected.size() >= MAX_HIGH_PCODE_OPS) {
-                omittedOperationsLowerBound += 1;
-                continue;
-            }
-            selected.add(operation);
+            allOperations.add(operations.next());
+        }
+        Map<PcodeOpAST, Boolean> retained = new IdentityHashMap<>();
+        for (PcodeOpAST operation : allOperations) {
+            if (retained.size() >= MAX_HIGH_PCODE_OPS) break;
+            if (isHighPcodeSemanticRoot(operation)) retained.put(operation, Boolean.TRUE);
+        }
+        for (PcodeOpAST operation : allOperations) {
+            if (!isHighPcodeSemanticRoot(operation)) continue;
+            retainHighPcodeDefUseClosure(operation, retained);
+            if (retained.size() >= MAX_HIGH_PCODE_OPS) break;
+        }
+        for (PcodeOpAST operation : allOperations) {
+            if (retained.size() >= MAX_HIGH_PCODE_OPS) break;
+            retained.put(operation, Boolean.TRUE);
+        }
+        List<PcodeOpAST> selected = new ArrayList<>();
+        for (PcodeOpAST operation : allOperations) {
+            if (retained.containsKey(operation)) selected.add(operation);
+        }
+        int omittedOperationsLowerBound = allOperations.size() - selected.size();
+        int semanticRootsTotal = 0;
+        int semanticRootsRetained = 0;
+        for (PcodeOpAST operation : allOperations) {
+            if (!isHighPcodeSemanticRoot(operation)) continue;
+            semanticRootsTotal += 1;
+            if (retained.containsKey(operation)) semanticRootsRetained += 1;
         }
 
         Map<PcodeOpAST, String> operationIds = new IdentityHashMap<>();
@@ -1799,6 +1819,8 @@ public final class ReaGhidraBridge extends HeadlessScript {
         result.add("parameters", parameterValues);
         result.add("parameter_uses", parameterUses);
         result.add("effects", effects);
+        result.addProperty("semantic_roots_total", semanticRootsTotal);
+        result.addProperty("semantic_roots_retained", semanticRootsRetained);
         boolean truncated = omittedOperationsLowerBound > 0 ||
             omittedInputs > 0 || omittedEdges > 0;
         result.addProperty("truncated", truncated);
@@ -1822,13 +1844,64 @@ public final class ReaGhidraBridge extends HeadlessScript {
             "Memory read/write effects include stack and temporary memory operations; they do not identify persistent state or business meaning."
         );
         limitations.add(
-            "Operation, input, and def-use limits can truncate large functions; omitted_operations_lower_bound counts every operation visited after the retention limit, while omitted input/edge counts remain bounded to retained operations."
+            "Operation retention prioritizes branches, calls, comparisons, and their intra-function def-use ancestors before filling the remaining budget in provider order. omitted_operations_lower_bound counts every unretained operation; omitted input/edge counts remain bounded to retained operations."
         );
         limitations.add(
             "Known omitted-edge counts cover links omitted from retained operations; omitted operations may contain additional uncounted links."
         );
         result.add("limitations", limitations);
         return result;
+    }
+
+    private boolean isHighPcodeSemanticRoot(PcodeOpAST operation) {
+        return switch (operation.getOpcode()) {
+            case PcodeOp.CBRANCH,
+                 PcodeOp.BRANCH,
+                 PcodeOp.BRANCHIND,
+                 PcodeOp.CALL,
+                 PcodeOp.CALLIND,
+                 PcodeOp.CALLOTHER,
+                 PcodeOp.RETURN,
+                 PcodeOp.INT_EQUAL,
+                 PcodeOp.INT_NOTEQUAL,
+                 PcodeOp.INT_LESS,
+                 PcodeOp.INT_LESSEQUAL,
+                 PcodeOp.INT_SLESS,
+                 PcodeOp.INT_SLESSEQUAL,
+                 PcodeOp.BOOL_NEGATE,
+                 PcodeOp.BOOL_XOR,
+                 PcodeOp.BOOL_AND,
+                 PcodeOp.BOOL_OR,
+                 PcodeOp.FLOAT_EQUAL,
+                 PcodeOp.FLOAT_NOTEQUAL,
+                 PcodeOp.FLOAT_LESS,
+                 PcodeOp.FLOAT_LESSEQUAL -> true;
+            default -> false;
+        };
+    }
+
+    private void retainHighPcodeDefUseClosure(
+        PcodeOpAST root,
+        Map<PcodeOpAST, Boolean> retained
+    ) throws Exception {
+        ArrayDeque<PcodeOpAST> pending = new ArrayDeque<>();
+        Map<PcodeOpAST, Boolean> expanded = new IdentityHashMap<>();
+        pending.add(root);
+        while (!pending.isEmpty() && retained.size() < MAX_HIGH_PCODE_OPS) {
+            monitor.checkCancelled();
+            PcodeOpAST operation = pending.removeFirst();
+            if (expanded.put(operation, Boolean.TRUE) != null) continue;
+            retained.put(operation, Boolean.TRUE);
+            for (int index = 0; index < operation.getNumInputs(); index += 1) {
+                Varnode input = operation.getInput(index);
+                if (!(input instanceof VarnodeAST astInput)) continue;
+                PcodeOp definition = astInput.getDef();
+                if (definition instanceof PcodeOpAST astDefinition &&
+                    !expanded.containsKey(astDefinition)) {
+                    pending.addLast(astDefinition);
+                }
+            }
+        }
     }
 
     private String pcodeOperationId(PcodeOpAST operation) {

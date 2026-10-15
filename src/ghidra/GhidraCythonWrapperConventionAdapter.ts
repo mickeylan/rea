@@ -116,7 +116,17 @@ const observeDossier = (
       "The current structured dossier does not expose decoded Cython keyword tables, argument-count predicates, or default-slot assignments.",
       ...(valueFlow === null || valueFlow.available === false
         ? ["Structured native value flow was unavailable for this wrapper."]
-        : valueFlow.limitations),
+        : [
+            ...(valueFlow.semantic_roots_retained ===
+            valueFlow.semantic_roots_total
+              ? [
+                  "All observed comparison, branch, call, and return roots were retained; their def-use ancestors may still be incomplete when the operation budget was reached.",
+                ]
+              : [
+                  "The operation budget omitted observed comparison, branch, call, or return roots.",
+                ]),
+            ...valueFlow.limitations,
+          ]),
     ],
   });
 };

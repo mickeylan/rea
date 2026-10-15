@@ -303,6 +303,11 @@ const ghidraNativeValueFlow = nativeValueFlowSchema.superRefine(
         code: "custom",
         message: "Ghidra p-code relationship references a missing operation",
       });
+    if (value.semantic_roots_retained > value.semantic_roots_total)
+      context.addIssue({
+        code: "custom",
+        message: "Ghidra retained more semantic roots than it examined",
+      });
     if (
       value.truncated !==
       (value.omitted_operations_lower_bound > 0 ||

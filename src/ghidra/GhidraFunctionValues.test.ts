@@ -331,6 +331,8 @@ describe("Ghidra reference and value-flow completeness", () => {
     "blocks",
     "parameters",
     "parameter_uses",
+    "semantic_roots_total",
+    "semantic_roots_retained",
   ])("rejects a value-flow result missing %s", (field) => {
     const dossier = ghidraFunctionDossier();
     if (

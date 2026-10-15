@@ -77,6 +77,8 @@ export const nativeValueFlowSchema = z.discriminatedUnion("available", [
         input_index: z.number().int().nonnegative(),
       }),
     ),
+    semantic_roots_total: z.number().int().nonnegative(),
+    semantic_roots_retained: z.number().int().nonnegative(),
     truncated: z.boolean(),
     omitted_operations_lower_bound: z.number().int().nonnegative(),
     known_omitted_inputs: z.number().int().nonnegative(),

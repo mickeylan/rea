@@ -222,6 +222,8 @@ export const ghidraFunctionDossier = (): JsonValue => {
       parameters: [],
       parameter_uses: [],
       effects: [],
+      semantic_roots_total: 0,
+      semantic_roots_retained: 0,
       truncated: false,
       omitted_operations_lower_bound: 0,
       known_omitted_inputs: 0,
