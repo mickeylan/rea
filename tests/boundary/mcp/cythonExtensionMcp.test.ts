@@ -5,6 +5,7 @@ import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, expect, it } from "vitest";
 
 import type { AnalysisClient } from "../../../src/application/AnalysisProvider.js";
+import { analysisErrorProjectionSchema } from "../../../src/contracts/errorSchemas.js";
 import { pe } from "../../../src/domain/binaryTarget.fixture.js";
 import { ok } from "../../../src/domain/result.js";
 import { createServer } from "../../../src/server/createServer.js";
@@ -14,9 +15,34 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
 const resources: Array<{ close(): Promise<unknown> }> = [];
 
+const responseText = (response: { readonly content: readonly unknown[] }) =>
+  response.content
+    .flatMap((part) =>
+      typeof part === "object" &&
+      part !== null &&
+      "text" in part &&
+      typeof part.text === "string"
+        ? [part.text]
+        : [],
+    )
+    .join("");
+
 afterEach(async () => {
   await Promise.all(resources.splice(0).map((resource) => resource.close()));
 });
+
+const connectSessionServer = async (
+  session: ReturnType<typeof createTestBinarySession>,
+): Promise<Client> => {
+  const server = createServer({ kind: "session", session });
+  const client = new Client({ name: "cython-extension-test", version: "1" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  resources.push(client, server, session);
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return client;
+};
 
 it("inspects one admitted pyd target through MCP in the retained session", async () => {
   const directory = await createTestTempDirectory("rea-cython-mcp-");
@@ -50,13 +76,7 @@ it("inspects one admitted pyd target through MCP in the retained session", async
   const opened = await session.open(path);
   if (!opened.ok) throw opened.error;
 
-  const server = createServer({ kind: "session", session });
-  const client = new Client({ name: "cython-extension-test", version: "1" });
-  const [clientTransport, serverTransport] =
-    InMemoryTransport.createLinkedPair();
-  resources.push(client, server, session);
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
+  const client = await connectSessionServer(session);
 
   const response = await client.callTool({
     name: "inspect_cython_extension",
@@ -87,4 +107,31 @@ it("inspects one admitted pyd target through MCP in the retained session", async
     },
   });
   expect(calls).toEqual(["health", "list_names", "list_strings"]);
+});
+
+it("fails closed before provider execution without an active target", async () => {
+  const calls: string[] = [];
+  const session = createTestBinarySession(
+    () =>
+      ({
+        execute: (operation) => {
+          calls.push(operation);
+          return Promise.resolve(observed([]));
+        },
+        close: () => Promise.resolve(ok(null)),
+      }) satisfies AnalysisClient,
+  );
+  const client = await connectSessionServer(session);
+
+  const response = await client.callTool({
+    name: "inspect_cython_extension",
+    arguments: {},
+  });
+
+  expect(response.isError).toBe(true);
+  const error = analysisErrorProjectionSchema.parse(
+    JSON.parse(responseText(response)).error,
+  );
+  expect(error.code).toBe("unreadable_output");
+  expect(calls).toEqual([]);
 });
