@@ -123,6 +123,7 @@ describe("Cython wrapper convention candidates", () => {
       positional_bounds: [
         { minimum: 2, maximum: 4, evidence_address: "0x1030" },
       ],
+      integer_bound_candidates: [],
       keyword_orders: [
         {
           names: ["self", "prompt", "image", "seed"],
@@ -195,6 +196,7 @@ describe("Cython wrapper convention candidates", () => {
         { minimum: 1, maximum: 2, evidence_address: "0x1030" },
         { minimum: 1, maximum: 3, evidence_address: "0x1040" },
       ],
+      integer_bound_candidates: [],
       keyword_orders: [],
       slots: [
         {

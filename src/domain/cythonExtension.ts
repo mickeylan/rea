@@ -171,6 +171,25 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
       evidence_address: z.string().min(1),
     }),
   ),
+  integer_bound_candidates: z.array(
+    z.strictObject({
+      parameter_ordinal: z.number().int().nonnegative(),
+      comparison: z.enum([
+        "equal",
+        "not-equal",
+        "less-than",
+        "less-than-or-equal",
+        "signed-less-than",
+        "signed-less-than-or-equal",
+      ]),
+      parameter_operand: z.enum(["left", "right"]),
+      constant: z.number().int().safe(),
+      comparison_address: z.string().min(1),
+      branch_address: z.string().min(1),
+      taken_block: z.string().min(1),
+      fallthrough_block: z.string().min(1),
+    }),
+  ),
   keyword_orders: z.array(
     z.strictObject({
       names: z.array(z.string().min(1)),
@@ -218,6 +237,8 @@ export const cythonCallingConventionCandidateSchema = z.strictObject({
     knownPositionalBoundsSchema,
     unknownFactSchema,
   ]),
+  integer_bound_candidates:
+    cythonWrapperConventionObservationSchema.shape.integer_bound_candidates,
   keyword_order: z.discriminatedUnion("status", [
     knownStringListSchema,
     unknownFactSchema,
@@ -357,6 +378,12 @@ export const projectCythonCallingConventionCandidate = (
     ...observation.positional_bounds.map(
       ({ evidence_address }) => evidence_address,
     ),
+    ...observation.integer_bound_candidates.flatMap(
+      ({ comparison_address, branch_address }) => [
+        comparison_address,
+        branch_address,
+      ],
+    ),
     ...observation.keyword_orders.flatMap(
       ({ evidence_addresses: addresses }) => addresses,
     ),
@@ -388,6 +415,13 @@ export const projectCythonCallingConventionCandidate = (
                 ? "No positional bound observation was supplied."
                 : "Conflicting or invalid positional bound observations were supplied.",
           },
+    integer_bound_candidates: uniqueValues(
+      observation.integer_bound_candidates,
+    ).sort(
+      (left, right) =>
+        left.comparison_address.localeCompare(right.comparison_address) ||
+        left.branch_address.localeCompare(right.branch_address),
+    ),
     keyword_order:
       keywordOrders.length === 1
         ? { status: "known", value: keywordOrders[0]! }

@@ -129,6 +129,130 @@ it("retains structured Ghidra callees as candidates without parsing pseudocode",
   expect(result.value.limitations).toContain("provider limitation");
 });
 
+it("retains a complete parameter-bound branch as a candidate, not a final range", async () => {
+  const dossier = ghidraFunctionDossier() as Record<string, JsonValue>;
+  const comparison = {
+    id: "0x401000#0",
+    address: "0x401000",
+    sequence: 0,
+    opcode: "INT_SLESS",
+    is_dead: false,
+    block_membership: "member",
+    block_id: "block:0",
+    input_definitions_complete: true,
+    inputs: [
+      {
+        kind: "register",
+        size_bytes: 8,
+        location: "register:0x8",
+        constant_hex: null,
+      },
+      {
+        kind: "constant",
+        size_bytes: 8,
+        location: null,
+        constant_hex: "11",
+      },
+    ],
+    output: {
+      kind: "unique",
+      size_bytes: 1,
+      location: "unique:0x10",
+      constant_hex: null,
+    },
+  };
+  const branch = {
+    id: "0x401004#1",
+    address: "0x401004",
+    sequence: 1,
+    opcode: "CBRANCH",
+    is_dead: false,
+    block_membership: "member",
+    block_id: "block:0",
+    input_definitions_complete: true,
+    inputs: [
+      {
+        kind: "address",
+        size_bytes: 8,
+        location: "0x401020",
+        constant_hex: null,
+      },
+      comparison.output,
+    ],
+    output: null,
+  };
+  const result = await new GhidraCythonWrapperConventionAdapter(
+    new RecordingAnalysis({
+      ...dossier,
+      native_value_flow: {
+        available: true,
+        provenance: "ghidra-high-pcode",
+        operations: [comparison, branch],
+        blocks: [
+          {
+            id: "block:0",
+            start_address: "0x401000",
+            operation_ids: [comparison.id, branch.id],
+            successor_ids: ["block:1", "block:2"],
+          },
+          {
+            id: "block:1",
+            start_address: "0x401010",
+            operation_ids: [],
+            successor_ids: [],
+          },
+          {
+            id: "block:2",
+            start_address: "0x401020",
+            operation_ids: [],
+            successor_ids: [],
+          },
+        ],
+        def_use: [
+          { definition: comparison.id, use: branch.id, input_index: 1 },
+        ],
+        effects: [
+          {
+            operation: branch.id,
+            kind: "conditional_branch",
+            operand_input: null,
+            value_input: 1,
+            branch_target_block: "block:2",
+            branch_fallthrough_block: "block:1",
+          },
+        ],
+        parameters: [{ ordinal: 2, name: "param_3", data_type: "/longlong" }],
+        parameter_uses: [{ ordinal: 2, use: comparison.id, input_index: 0 }],
+        semantic_roots_total: 2,
+        semantic_roots_retained: 2,
+        truncated: false,
+        omitted_operations_lower_bound: 0,
+        known_omitted_inputs: 0,
+        known_omitted_edges: 0,
+        limitations: ["Fixture structured flow."],
+      },
+    }),
+  ).observe("0x401000");
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  expect(result.value.result).toMatchObject({
+    positional_bounds: [],
+    integer_bound_candidates: [
+      {
+        parameter_ordinal: 2,
+        comparison: "signed-less-than",
+        parameter_operand: "left",
+        constant: 17,
+        comparison_address: "0x401000",
+        branch_address: "0x401004",
+        taken_block: "block:2",
+        fallthrough_block: "block:1",
+      },
+    ],
+  });
+});
+
 it("fails closed on a malformed function dossier", async () => {
   const result = await new GhidraCythonWrapperConventionAdapter(
     new RecordingAnalysis({ invalid: true }),

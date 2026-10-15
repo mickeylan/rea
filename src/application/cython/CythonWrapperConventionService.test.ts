@@ -15,6 +15,7 @@ const observation = {
   callable_names: [{ address: "0x1010", value: "build" }],
   implementation_candidates: [],
   positional_bounds: [{ minimum: 2, maximum: 3, evidence_address: "0x1020" }],
+  integer_bound_candidates: [],
   keyword_orders: [
     { names: ["self", "prompt", "image"], evidence_addresses: ["0x1030"] },
   ],

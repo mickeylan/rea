@@ -55,7 +55,9 @@ Bridge 会继续遍历但不序列化超预算 operation，使 `omitted_operatio
 
 每个 operation 现在另有 `input_definitions_complete`。条件分支 effect 在能与 high-pcode block 起始地址精确匹配时携带 `branch_target_block`；当该目标属于当前 block 的两个 successors 且另一条边唯一时，另携带 `branch_fallthrough_block`。两者相同、引用缺失 block 或非条件分支携带极性信息都会被严格拒绝。
 
-真实样本中，`INPUT_TYPES` body 的 165/165 个条件分支均有完整输入定义、taken target 和 fallthrough；`enhance_prompt` wrapper 的 107 个条件分支全部输入定义完整，其中 105 个具有完整极性，另外 2 个保持 Unknown。完整函数仍报告 `truncated=true`，但 adapter 已可仅从定义闭包完整且极性明确的分支筛选 argument-count 候选；不会依赖 successor 顺序或把 unresolved 分支猜成 fallthrough。该能力仍不公开为 CLI/MCP 操作。
+真实样本中，`INPUT_TYPES` body 的 165/165 个条件分支均有完整输入定义、taken target 和 fallthrough；`enhance_prompt` wrapper 的 107 个条件分支全部输入定义完整，其中 105 个具有完整极性，另外 2 个保持 Unknown。
+
+Adapter 现只从完整极性分支中保留以下结构化候选：分支条件必须由整数比较直接定义，比较必须恰有一个安全整数常量，另一个 operand 必须由 `parameter_uses` 直接归属于一个函数参数，比较与分支的输入定义均须完整。它不会把候选直接提升为位置参数范围。真实 `enhance_prompt` wrapper 得到两个候选：ordinal 3 与 `0` 的 `not-equal` 比较，以及 ordinal 2 与 `17` 的 signed-less-than 比较；后者对应已知最小实参数路径，但当前结构化输出没有保留可证明的 ordinal 2 与 `25` 上界链，因此最终 `positional` 仍保持 Unknown。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 
