@@ -276,7 +276,9 @@ if _llama_argument_supported("ctx_checkpoints"):
     settings["ctx_checkpoints"] = 0
 ```
 
-The numeric constants come from the Cython constant initializer: `n_gpu_layers` uses `PyLong_FromLong(0xFFFFFFFF)`, which is signed `-1` on the Windows ABI, while `ctx_checkpoints` uses the initialized integer zero. The unresolved parts are how `resolved_model_path` and `selected_chat_handler` are produced for each branch.
+The numeric constants come from the Cython constant initializer: `n_gpu_layers` uses `PyLong_FromLong(0xFFFFFFFF)`, which is signed `-1` on the Windows ABI, while `ctx_checkpoints` uses the initialized integer zero.
+
+`resolved_model_path` is also resolved: it is `os.path.join(folder_paths.models_dir, "LLM", settings["model"])`. The loader requires `os.path.isfile(resolved_model_path)`, raises `找不到模型文件：<path>` when absent, and calls `_validate_gguf_shards(resolved_model_path, file_label="主模型")` before construction. A nonempty `mmproj` value other than `无` is resolved with the same `models_dir/LLM` prefix, checked with `isfile`, and validated with `file_label="mmproj"`; otherwise the effective projector path remains `None`.
 
 ### Family selection
 
@@ -303,7 +305,14 @@ Related handler observations are:
 - `Qwen3VLChatHandler`
 - `_create_multimodal_handler`
 
-The family strings and return values above are direct static observations. Handler dispatch then distinguishes Qwen 3.5, Qwen 3.6, Qwen 3.8, and fallback Qwen 3 VL behavior; exact constructor selection for every family remains under analysis.
+The family strings and return values above are direct static observations. Handler dispatch is now bounded more precisely:
+
+- Qwen 3.5 and Qwen 3.6 with a truthy projector path use `_create_qwen35_handler(projector_path, enable_thinking=think, preserve_thinking=False)`.
+- Qwen 3.8 without a projector uses `_create_qwen38_text_handler(llm, enable_thinking=think, preserve_thinking=False, reasoning_effort=reasoning_effort)` and assigns the result to `llm.chat_handler`.
+- Qwen 3.8 with a projector uses `_create_qwen38_vision_handler(projector_path, chat_template=template, enable_thinking=think, preserve_thinking=False, reasoning_effort=reasoning_effort)` and assigns the result to `llm.chat_handler`.
+- The fallback Qwen 3 VL projector route requires `Qwen3VLChatHandler`; missing support raises `当前 llama-cpp-python 不支持 Qwen3VLChatHandler，请更新 llama-cpp-python。` and delegates construction through `_create_multimodal_handler`.
+
+Branches without a projector retain `None` unless a post-construction Qwen 3.8 text handler is installed. Some fallback multimodal constructor details remain unresolved.
 
 ### GGUF shard validation
 
@@ -335,7 +344,7 @@ The following remain intentionally unresolved:
 - API request construction, authentication, and provider-specific response handling.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
-- The exact `resolved_model_path` normalization and complete per-family `selected_chat_handler` construction.
+- Remaining fallback multimodal handler constructor details and template adaptation edge cases.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
 
 ## Reproduction commands

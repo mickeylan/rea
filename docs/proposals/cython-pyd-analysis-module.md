@@ -27,6 +27,20 @@
 | **证据驱动**          | 返回分析结果时附带证据和置信度       |
 | **渐进式分析**        | 支持从概览到深入的多层次分析         |
 
+### 1.3 当前实现边界与通用化方向
+
+当前已发布的公共入口是 CLI `inspect-cython-extension` 与 MCP `inspect_cython_extension`。它们复用活动 `BinarySession`，在同一 provider 会话中组合 `list_names` 和 `list_strings`，并返回带来源、analysis profile、locations、limitations 和取消语义的只读 Evidence。早期独立启动反编译器、直接调用 provider 内部实现或导入目标模块的方案均已废弃。
+
+最终实现必须是通用 Cython `.pyd` 模块，而不是针对某个样本的脚本。`TE_Prompt_Text.pyd` 与 `TE_Qwen_Image_2_1_Prompt_Enhancer.pyd` 只承担复杂真实样本和回归证据的角色；其中的 ComfyUI、Qwen、模型路径和业务字段不会进入公共领域模型。通用层按以下阶段演进：
+
+1. **有界 inventory**：确认 CPython 初始化器、Cython markers、候选限定名和源码路径。
+2. **候选归属**：把 wrapper、implementation body、method table 和初始化对象建模为带置信度及来源地址的候选，而不是直接宣称已恢复 Python API。
+3. **调用约定恢复**：解析 Cython wrapper 的位置参数范围、关键字顺序、必填/可选槽位及静态默认值；无法证明时保持 Unknown。
+4. **返回路径摘要**：区分公共返回、辅助调用参数、异常传播和清理路径，并保留覆盖范围。
+5. **按需深挖**：只对调用者选择的候选函数执行反编译、值流和调用图分析，避免把整份大型 inventory 放入上下文。
+
+这些阶段应共享 CLI/MCP contracts、Evidence 与 snapshot 语义，并保持 provider-neutral。样本专用解释只能出现在分析报告或测试 fixture 中。
+
 ---
 
 ## 2. 架构设计
