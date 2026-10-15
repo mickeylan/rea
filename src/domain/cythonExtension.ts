@@ -200,12 +200,28 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
           case_value: z.number().int().safe().nullable(),
           target_address: z.string().min(1),
           confidence: z.enum(["low", "medium", "high"]),
+          reachable_calls: z.array(
+            z.strictObject({
+              call_site: z.string().min(1),
+              target_address: z.string().min(1),
+              target_name: z.string().min(1).nullable(),
+            }),
+          ),
+          reachability_complete: z.boolean(),
         }),
       ),
       default_targets: z.array(
         z.strictObject({
           target_address: z.string().min(1),
           confidence: z.enum(["low", "medium", "high"]),
+          reachable_calls: z.array(
+            z.strictObject({
+              call_site: z.string().min(1),
+              target_address: z.string().min(1),
+              target_name: z.string().min(1).nullable(),
+            }),
+          ),
+          reachability_complete: z.boolean(),
         }),
       ),
       entry_counts: z.array(z.number().int().nonnegative()),

@@ -151,6 +151,7 @@ type AvailableNativeApi = Extract<
 const observeJumpTableCandidates = (
   flow: AvailableValueFlow,
   tables: AvailableNativeApi["jump_tables"],
+  dossier: FunctionDossier,
 ) => {
   const operationsByAddress = new Map<
     string,
@@ -192,6 +193,7 @@ const observeJumpTableCandidates = (
       (value, index) =>
         index === 0 || value === knownCaseValues[index - 1]! + 1,
     );
+    const reachability = createReachability(flow, dossier);
     return [
       {
         parameter_ordinal: parameterUses[0]!.ordinal,
@@ -202,12 +204,14 @@ const observeJumpTableCandidates = (
             case_value,
             target_address,
             confidence,
+            ...reachability(target_address),
           }),
         ),
         default_targets: table.default_targets.map(
           ({ target_address, confidence }) => ({
             target_address,
             confidence,
+            ...reachability(target_address),
           }),
         ),
         entry_counts: entryCounts,
@@ -223,6 +227,86 @@ const observeJumpTableCandidates = (
       },
     ];
   });
+};
+
+const createReachability = (
+  flow: AvailableValueFlow,
+  dossier: FunctionDossier,
+) => {
+  const blocksByStart = new Map(
+    flow.blocks.map((block) => [block.start_address, block]),
+  );
+  const blocksById = new Map(flow.blocks.map((block) => [block.id, block]));
+  const operations = new Map(
+    flow.operations.map((operation) => [operation.id, operation]),
+  );
+  const callsBySite = new Map<
+    string,
+    { target_address: string; target_name: string | null }[]
+  >();
+  for (const reference of dossier.outgoing_references) {
+    if (
+      !reference.kind.available ||
+      !reference.kind.call ||
+      reference.target_procedure === null
+    )
+      continue;
+    const calls = callsBySite.get(reference.source_address) ?? [];
+    calls.push({
+      target_address: reference.target_procedure.address,
+      target_name: reference.target_procedure.name,
+    });
+    callsBySite.set(reference.source_address, calls);
+  }
+  const rootsComplete =
+    flow.semantic_roots_retained === flow.semantic_roots_total;
+  return (targetAddress: string) => {
+    const start = blocksByStart.get(targetAddress);
+    if (start === undefined)
+      return { reachable_calls: [], reachability_complete: false };
+    const pending = [start.id];
+    const visited = new Set<string>();
+    const calls = new Map<
+      string,
+      {
+        call_site: string;
+        target_address: string;
+        target_name: string | null;
+      }
+    >();
+    let complete = rootsComplete;
+    while (pending.length > 0) {
+      const blockId = pending.pop()!;
+      if (visited.has(blockId)) continue;
+      visited.add(blockId);
+      const block = blocksById.get(blockId);
+      if (block === undefined) {
+        complete = false;
+        continue;
+      }
+      for (const operationId of block.operation_ids) {
+        const operation = operations.get(operationId);
+        if (operation === undefined) {
+          complete = false;
+          continue;
+        }
+        if (operation.opcode !== "CALL") continue;
+        for (const target of callsBySite.get(operation.address) ?? []) {
+          const call = { call_site: operation.address, ...target };
+          calls.set(JSON.stringify(call), call);
+        }
+      }
+      for (const successor of block.successor_ids) pending.push(successor);
+    }
+    return {
+      reachable_calls: [...calls.values()].sort(
+        (left, right) =>
+          left.call_site.localeCompare(right.call_site) ||
+          left.target_address.localeCompare(right.target_address),
+      ),
+      reachability_complete: complete,
+    };
+  };
 };
 
 const parseComparisonConstant = (
@@ -284,7 +368,11 @@ const observeDossier = (
         : [],
     jump_table_candidates:
       valueFlow?.available === true && dossier.native_api?.available === true
-        ? observeJumpTableCandidates(valueFlow, dossier.native_api.jump_tables)
+        ? observeJumpTableCandidates(
+            valueFlow,
+            dossier.native_api.jump_tables,
+            dossier,
+          )
         : [],
     keyword_orders: [],
     slots: [],
