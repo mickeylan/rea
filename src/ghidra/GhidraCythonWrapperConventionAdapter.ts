@@ -143,6 +143,75 @@ const observeIntegerBoundCandidates = (flow: AvailableValueFlow) => {
   });
 };
 
+type AvailableNativeApi = Extract<
+  NonNullable<FunctionDossier["native_api"]>,
+  { available: true }
+>;
+
+const observeJumpTableCandidates = (
+  flow: AvailableValueFlow,
+  tables: AvailableNativeApi["jump_tables"],
+) => {
+  const operationsByAddress = new Map<
+    string,
+    AvailableValueFlow["operations"]
+  >();
+  for (const operation of flow.operations) {
+    const existing = operationsByAddress.get(operation.address) ?? [];
+    existing.push(operation);
+    operationsByAddress.set(operation.address, existing);
+  }
+  return tables.flatMap((table) => {
+    const dispatches = (
+      operationsByAddress.get(table.dispatch_address) ?? []
+    ).filter(
+      ({ opcode, input_definitions_complete }) =>
+        opcode === "BRANCHIND" && input_definitions_complete,
+    );
+    if (dispatches.length !== 1) return [];
+    const dispatch = dispatches[0]!;
+    const parameterUses = flow.parameter_uses.filter(
+      ({ use, input_index }) => use === dispatch.id && input_index === 0,
+    );
+    if (parameterUses.length !== 1) return [];
+    const knownCaseValues = [
+      ...new Set(
+        table.mappings.flatMap(({ case_value }) =>
+          case_value === null ? [] : [case_value],
+        ),
+      ),
+    ].sort((left, right) => left - right);
+    const entryCounts = [
+      ...new Set(
+        table.data_sources.flatMap(({ entry_count }) =>
+          entry_count === null ? [] : [entry_count],
+        ),
+      ),
+    ].sort((left, right) => left - right);
+    const contiguous = knownCaseValues.every(
+      (value, index) =>
+        index === 0 || value === knownCaseValues[index - 1]! + 1,
+    );
+    return [
+      {
+        parameter_ordinal: parameterUses[0]!.ordinal,
+        dispatch_address: table.dispatch_address,
+        known_case_values: knownCaseValues,
+        entry_counts: entryCounts,
+        unknown_mapping_count: table.mappings.filter(
+          ({ case_value }) => case_value === null,
+        ).length,
+        default_target_count: table.default_targets.length,
+        cases_complete:
+          entryCounts.length === 1 &&
+          knownCaseValues.length === entryCounts[0] &&
+          contiguous,
+        default_known: table.default_targets.length > 0,
+      },
+    ];
+  });
+};
+
 const parseComparisonConstant = (
   input: AvailableValueFlow["operations"][number]["inputs"][number],
   signed: boolean,
@@ -199,6 +268,10 @@ const observeDossier = (
     integer_bound_candidates:
       valueFlow?.available === true
         ? observeIntegerBoundCandidates(valueFlow)
+        : [],
+    jump_table_candidates:
+      valueFlow?.available === true && dossier.native_api?.available === true
+        ? observeJumpTableCandidates(valueFlow, dossier.native_api.jump_tables)
         : [],
     keyword_orders: [],
     slots: [],

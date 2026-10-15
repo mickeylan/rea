@@ -190,6 +190,18 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
       fallthrough_block: z.string().min(1),
     }),
   ),
+  jump_table_candidates: z.array(
+    z.strictObject({
+      parameter_ordinal: z.number().int().nonnegative(),
+      dispatch_address: z.string().min(1),
+      known_case_values: z.array(z.number().int().safe()),
+      entry_counts: z.array(z.number().int().nonnegative()),
+      unknown_mapping_count: z.number().int().nonnegative(),
+      default_target_count: z.number().int().nonnegative(),
+      cases_complete: z.boolean(),
+      default_known: z.boolean(),
+    }),
+  ),
   keyword_orders: z.array(
     z.strictObject({
       names: z.array(z.string().min(1)),
@@ -239,6 +251,8 @@ export const cythonCallingConventionCandidateSchema = z.strictObject({
   ]),
   integer_bound_candidates:
     cythonWrapperConventionObservationSchema.shape.integer_bound_candidates,
+  jump_table_candidates:
+    cythonWrapperConventionObservationSchema.shape.jump_table_candidates,
   keyword_order: z.discriminatedUnion("status", [
     knownStringListSchema,
     unknownFactSchema,
@@ -384,6 +398,9 @@ export const projectCythonCallingConventionCandidate = (
         branch_address,
       ],
     ),
+    ...observation.jump_table_candidates.map(
+      ({ dispatch_address }) => dispatch_address,
+    ),
     ...observation.keyword_orders.flatMap(
       ({ evidence_addresses: addresses }) => addresses,
     ),
@@ -421,6 +438,10 @@ export const projectCythonCallingConventionCandidate = (
       (left, right) =>
         left.comparison_address.localeCompare(right.comparison_address) ||
         left.branch_address.localeCompare(right.branch_address),
+    ),
+    jump_table_candidates: uniqueValues(observation.jump_table_candidates).sort(
+      (left, right) =>
+        left.dispatch_address.localeCompare(right.dispatch_address),
     ),
     keyword_order:
       keywordOrders.length === 1

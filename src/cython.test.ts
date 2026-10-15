@@ -124,6 +124,18 @@ describe("Cython wrapper convention candidates", () => {
         { minimum: 2, maximum: 4, evidence_address: "0x1030" },
       ],
       integer_bound_candidates: [],
+      jump_table_candidates: [
+        {
+          parameter_ordinal: 2,
+          dispatch_address: "0x1038",
+          known_case_values: [2, 3, 4],
+          entry_counts: [3],
+          unknown_mapping_count: 1,
+          default_target_count: 0,
+          cases_complete: true,
+          default_known: false,
+        },
+      ],
       keyword_orders: [
         {
           names: ["self", "prompt", "image", "seed"],
@@ -172,6 +184,14 @@ describe("Cython wrapper convention candidates", () => {
       status: "known",
       value: ["self", "prompt", "image", "seed"],
     });
+    expect(candidate.jump_table_candidates).toEqual([
+      expect.objectContaining({
+        parameter_ordinal: 2,
+        known_case_values: [2, 3, 4],
+        cases_complete: true,
+        default_known: false,
+      }),
+    ]);
     expect(candidate.slots[2]).toMatchObject({
       index: 2,
       presence: "optional",
@@ -197,6 +217,7 @@ describe("Cython wrapper convention candidates", () => {
         { minimum: 1, maximum: 3, evidence_address: "0x1040" },
       ],
       integer_bound_candidates: [],
+      jump_table_candidates: [],
       keyword_orders: [],
       slots: [
         {
