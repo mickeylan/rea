@@ -45,6 +45,8 @@ export class CythonExtensionInspectionService {
     if (!namesExecution.ok) return namesExecution;
     if (isAborted(options?.signal))
       return err(new AnalysisCancelledError(OPERATION));
+    const names = parseInventory("list_names", namesExecution.value.result);
+    if (!names.ok) return names;
 
     const stringsExecution = await analysis.execute(
       "list_strings",
@@ -54,9 +56,6 @@ export class CythonExtensionInspectionService {
     if (!stringsExecution.ok) return stringsExecution;
     if (isAborted(options?.signal))
       return err(new AnalysisCancelledError(OPERATION));
-
-    const names = parseInventory("list_names", namesExecution.value.result);
-    if (!names.ok) return names;
     const strings = parseInventory(
       "list_strings",
       stringsExecution.value.result,

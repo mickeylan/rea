@@ -109,6 +109,40 @@ it("inspects one admitted pyd target through MCP in the retained session", async
   expect(calls).toEqual(["health", "list_names", "list_strings"]);
 });
 
+it("fails fast on malformed names without requesting strings", async () => {
+  const directory = await createTestTempDirectory("rea-cython-mcp-malformed-");
+  const path = join(directory, "malformed.pyd");
+  await writeFile(path, pe(0x8664, 64, 0x2002));
+  const calls: string[] = [];
+  const session = createTestBinarySession(
+    () =>
+      ({
+        execute: (operation) => {
+          calls.push(operation);
+          return Promise.resolve(
+            observed(operation === "list_names" ? { invalid: true } : []),
+          );
+        },
+        close: () => Promise.resolve(ok(null)),
+      }) satisfies AnalysisClient,
+  );
+  const opened = await session.open(path);
+  if (!opened.ok) throw opened.error;
+  const client = await connectSessionServer(session);
+
+  const response = await client.callTool({
+    name: "inspect_cython_extension",
+    arguments: {},
+  });
+
+  expect(response.isError).toBe(true);
+  const error = analysisErrorProjectionSchema.parse(
+    JSON.parse(responseText(response)).error,
+  );
+  expect(error.code).toBe("unreadable_output");
+  expect(calls).toEqual(["health", "list_names"]);
+});
+
 it("fails closed before provider execution without an active target", async () => {
   const calls: string[] = [];
   const session = createTestBinarySession(

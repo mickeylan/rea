@@ -137,6 +137,7 @@ describe("CythonExtensionInspectionService", () => {
     );
 
     expect(result.ok).toBe(false);
+    expect(analysis.calls).toEqual(["list_names"]);
     if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
   });
 
