@@ -7,6 +7,7 @@ import {
   isPythonSourcePath,
   projectCythonCallingConventionCandidate,
   pythonTypeHintFromCpythonSymbol,
+  resolveCythonKeywordOrder,
   splitPythonQualifiedName,
 } from "./domain/cythonExtension.js";
 
@@ -333,6 +334,74 @@ describe("Cython wrapper convention candidates", () => {
       }),
     ]);
     expect(candidate.limitations.at(-1)).toContain("Incomplete wrapper");
+  });
+});
+
+describe("Cython initializer-owned string bindings", () => {
+  const table = {
+    entries: [
+      {
+        index: 0,
+        slot_address: "0x5000",
+        symbol: "DAT_5000",
+        source_addresses: ["0x1000", "0x1008"],
+      },
+      {
+        index: 1,
+        slot_address: "0x5008",
+        symbol: "DAT_5008",
+        source_addresses: ["0x1010", "0x1018"],
+      },
+    ],
+    complete: true,
+  };
+  const bindings = {
+    owner: { address: "0x2000", name: "initialize_strings" },
+    bindings: [
+      {
+        slot_address: "0x5000",
+        descriptor_address: "0x3000",
+        value_address: "0x4000",
+        value: "self",
+        encoding: "utf-8" as const,
+        evidence_addresses: ["0x2010"],
+      },
+      {
+        slot_address: "0x5008",
+        descriptor_address: "0x3010",
+        value_address: "0x4010",
+        value: "prompt",
+        encoding: "utf-8" as const,
+        evidence_addresses: ["0x2020"],
+      },
+    ],
+    coverage: {
+      complete: true,
+      entry_count: 2,
+      termination: "explicit-count" as const,
+    },
+    limitations: [],
+  };
+
+  it("resolves keyword order only from complete unique owner bindings", () => {
+    expect(resolveCythonKeywordOrder(table, bindings)).toMatchObject({
+      keyword_order: { status: "known", value: ["self", "prompt"] },
+    });
+  });
+
+  it("keeps missing or incomplete owner bindings unknown", () => {
+    expect(
+      resolveCythonKeywordOrder(table, {
+        ...bindings,
+        bindings: bindings.bindings.slice(0, 1),
+      }).keyword_order,
+    ).toMatchObject({ status: "unknown" });
+    expect(
+      resolveCythonKeywordOrder(table, {
+        ...bindings,
+        coverage: { ...bindings.coverage, complete: false },
+      }).keyword_order,
+    ).toMatchObject({ status: "unknown" });
   });
 });
 

@@ -304,6 +304,45 @@ export type CythonWrapperConventionObservation = z.infer<
   typeof cythonWrapperConventionObservationSchema
 >;
 
+/** Initializer-owned mapping from native global slots to decoded Python strings. */
+export const cythonGlobalStringBindingsSchema = z.strictObject({
+  owner: z.strictObject({
+    address: z.string().min(1),
+    name: z.string().min(1).nullable(),
+  }),
+  bindings: z.array(
+    z.strictObject({
+      slot_address: z.string().min(1),
+      descriptor_address: z.string().min(1),
+      value_address: z.string().min(1),
+      value: z.string(),
+      encoding: z.enum(["utf-8", "ascii"]),
+      evidence_addresses: z.array(z.string().min(1)).min(1),
+    }),
+  ),
+  coverage: z.strictObject({
+    complete: z.boolean(),
+    entry_count: z.number().int().nonnegative().nullable(),
+    termination: z.enum(["explicit-count", "sentinel", "unknown"]),
+  }),
+  limitations: z.array(z.string()),
+});
+export type CythonGlobalStringBindings = z.infer<
+  typeof cythonGlobalStringBindingsSchema
+>;
+
+export const cythonKeywordOrderResolutionSchema = z.strictObject({
+  keyword_order: z.discriminatedUnion("status", [
+    knownStringListSchema,
+    unknownFactSchema,
+  ]),
+  evidence_addresses: z.array(z.string().min(1)),
+  limitations: z.array(z.string()),
+});
+export type CythonKeywordOrderResolution = z.infer<
+  typeof cythonKeywordOrderResolutionSchema
+>;
+
 /** Conservative candidate calling convention; unknown facts remain explicit. */
 export const cythonCallingConventionCandidateSchema = z.strictObject({
   wrapper: cythonWrapperConventionObservationSchema.shape.wrapper,
@@ -372,6 +411,64 @@ export const cythonCallingConventionCandidateSchema = z.strictObject({
 export type CythonCallingConventionCandidate = z.infer<
   typeof cythonCallingConventionCandidateSchema
 >;
+
+/** Join one wrapper-local slot ordering to initializer-owned decoded values. */
+export const resolveCythonKeywordOrder = (
+  table: CythonWrapperConventionObservation["ordered_global_slot_table_candidates"][number],
+  rawBindings: CythonGlobalStringBindings,
+): CythonKeywordOrderResolution => {
+  const bindings = cythonGlobalStringBindingsSchema.parse(rawBindings);
+  const bySlot = new Map<string, CythonGlobalStringBindings["bindings"]>();
+  for (const binding of bindings.bindings) {
+    const existing = bySlot.get(binding.slot_address) ?? [];
+    existing.push(binding);
+    bySlot.set(binding.slot_address, existing);
+  }
+  const resolved = table.entries.map((entry) => ({
+    entry,
+    matches: bySlot.get(entry.slot_address) ?? [],
+  }));
+  const values = resolved.flatMap(({ matches }) =>
+    matches.length === 1 ? [matches[0]!.value] : [],
+  );
+  const evidenceAddresses = [
+    bindings.owner.address,
+    ...table.entries.flatMap(({ slot_address, source_addresses }) => [
+      slot_address,
+      ...source_addresses,
+    ]),
+    ...resolved.flatMap(({ matches }) =>
+      matches.flatMap(
+        ({ descriptor_address, value_address, evidence_addresses }) => [
+          descriptor_address,
+          value_address,
+          ...evidence_addresses,
+        ],
+      ),
+    ),
+  ];
+  const complete =
+    table.complete &&
+    bindings.coverage.complete &&
+    resolved.every(({ matches }) => matches.length === 1);
+  return cythonKeywordOrderResolutionSchema.parse({
+    keyword_order: complete
+      ? { status: "known", value: values }
+      : {
+          status: "unknown",
+          reason: resolved.some(({ matches }) => matches.length > 1)
+            ? "Initializer bindings conflict for at least one wrapper slot."
+            : resolved.some(({ matches }) => matches.length === 0)
+              ? "At least one wrapper slot lacks an initializer-owned decoded value."
+              : "Wrapper ordering or initializer binding coverage is incomplete.",
+        },
+    evidence_addresses: [...new Set(evidenceAddresses)].sort(),
+    limitations: [
+      "Decoded values belong to the initializer owner; wrapper-local references only establish ordering.",
+      ...bindings.limitations,
+    ],
+  });
+};
 
 const compareObservation = (
   left: CythonExtensionObservation,

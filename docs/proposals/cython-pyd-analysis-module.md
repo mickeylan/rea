@@ -67,7 +67,9 @@ Adapter 还会把 `BRANCHIND` 的直接 parameter lineage 与已验证的 native
 
 真实 wrapper 的 `<17` 分支机器观察为 taken 侧 `no-python-error-api-observed`、fallthrough 侧 `python-error-api-reachable`，与简单的“比较为真即错误”规则不一致。因此 gate 正确拒绝生成 required-slot 候选；原始 integer-bound candidate 仍保留以供后续 parser-state 解释。两张 dispatch 表各产生 maximum-positional 候选 `25`，但 default/out-of-range 归属仍未形式化，最终 `required_slot_count`、`maximum_positional_count` 与 `positional` 均保持 Unknown。
 
-关键字表恢复的下一边界也已落地：adapter 按同一 CFG basic block 分组重复引用的 Ghidra `DAT_*` 全局槽位，并保留源码地址顺序为 `ordered_global_slot_table_candidates`。真实 `enhance_prompt` wrapper 得到一个 25-entry 候选，首尾槽分别为 `0x1800518d8` 与 `0x180050808`，与人工解码的 25 个参数槽数量一致。它仍标记 `complete=false`，且槽值未解码；只有 owning initializer 能把这些全局槽解释为 Python 字符串，因此当前 `keyword_order` 继续保持 Unknown。该能力仍不公开为 CLI/MCP 操作。
+关键字表恢复的下一边界也已落地：adapter 按同一 CFG basic block 分组重复引用的 Ghidra `DAT_*` 全局槽位，并保留源码地址顺序为 `ordered_global_slot_table_candidates`。真实 `enhance_prompt` wrapper 得到一个 25-entry 候选，首尾槽分别为 `0x1800518d8` 与 `0x180050808`，与人工解码的 25 个参数槽数量一致。它仍标记 `complete=false`，且槽值未解码。
+
+`cythonGlobalStringBindingsSchema` 现在独立建模 initializer owner、slot/descriptor/value 地址、解码值、编码、来源与覆盖范围；`resolveCythonKeywordOrder` 只按 canonical slot address 连接 wrapper 顺序与 owner bindings。只有 wrapper table 和 initializer bindings 都完整，且每个槽恰有一个解码值时才返回 Known；缺失、冲突或不完整均返回 Unknown。Provider adapter 尚未能证明 initializer 的 parallel-table ownership，所以真实 `keyword_order` 继续保持 Unknown。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 
