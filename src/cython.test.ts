@@ -135,6 +135,10 @@ describe("Cython wrapper convention candidates", () => {
           branch_address: "0x1036",
           taken_block: "block:error",
           fallthrough_block: "block:success",
+          taken_outcome: "python-error-api-reachable",
+          fallthrough_outcome: "no-python-error-api-observed",
+          taken_reachability_complete: true,
+          fallthrough_reachability_complete: true,
         },
       ],
       jump_table_candidates: [

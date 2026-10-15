@@ -81,10 +81,17 @@ const comparisonNames = {
   INT_SLESSEQUAL: "signed-less-than-or-equal",
 } as const;
 
-const observeIntegerBoundCandidates = (flow: AvailableValueFlow) => {
+const observeIntegerBoundCandidates = (
+  flow: AvailableValueFlow,
+  dossier: FunctionDossier,
+) => {
   const operations = new Map(
     flow.operations.map((operation) => [operation.id, operation]),
   );
+  const blockStarts = new Map(
+    flow.blocks.map((block) => [block.id, block.start_address]),
+  );
+  const reachability = createReachability(flow, dossier);
   return flow.effects.flatMap((effect) => {
     if (
       effect.kind !== "conditional_branch" ||
@@ -126,6 +133,12 @@ const observeIntegerBoundCandidates = (flow: AvailableValueFlow) => {
       comparison.opcode.startsWith("INT_S"),
     );
     if (constant === null) return [];
+    const takenAddress = blockStarts.get(effect.branch_target_block);
+    const fallthroughAddress = blockStarts.get(effect.branch_fallthrough_block);
+    if (takenAddress === undefined || fallthroughAddress === undefined)
+      return [];
+    const taken = reachability(takenAddress);
+    const fallthrough = reachability(fallthroughAddress);
     return [
       {
         parameter_ordinal: parameterUse.ordinal,
@@ -138,6 +151,10 @@ const observeIntegerBoundCandidates = (flow: AvailableValueFlow) => {
         branch_address: branch.address,
         taken_block: effect.branch_target_block,
         fallthrough_block: effect.branch_fallthrough_block,
+        taken_outcome: taken.outcome,
+        fallthrough_outcome: fallthrough.outcome,
+        taken_reachability_complete: taken.reachability_complete,
+        fallthrough_reachability_complete: fallthrough.reachability_complete,
       },
     ];
   });
@@ -377,7 +394,7 @@ const observeDossier = (
     positional_bounds: [],
     integer_bound_candidates:
       valueFlow?.available === true
-        ? observeIntegerBoundCandidates(valueFlow)
+        ? observeIntegerBoundCandidates(valueFlow, dossier)
         : [],
     jump_table_candidates:
       valueFlow?.available === true && dossier.native_api?.available === true

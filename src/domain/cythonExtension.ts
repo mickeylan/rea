@@ -192,6 +192,18 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
       branch_address: z.string().min(1),
       taken_block: z.string().min(1),
       fallthrough_block: z.string().min(1),
+      taken_outcome: z.enum([
+        "python-error-api-reachable",
+        "no-python-error-api-observed",
+        "unresolved",
+      ]),
+      fallthrough_outcome: z.enum([
+        "python-error-api-reachable",
+        "no-python-error-api-observed",
+        "unresolved",
+      ]),
+      taken_reachability_complete: z.boolean(),
+      fallthrough_reachability_complete: z.boolean(),
     }),
   ),
   jump_table_candidates: z.array(
@@ -458,7 +470,11 @@ export const projectCythonCallingConventionCandidate = (
     observation.integer_bound_candidates.flatMap((candidate) =>
       candidate.parameter_operand === "left" &&
       ["less-than", "signed-less-than"].includes(candidate.comparison) &&
-      candidate.constant >= 0
+      candidate.constant >= 0 &&
+      candidate.taken_reachability_complete &&
+      candidate.fallthrough_reachability_complete &&
+      candidate.taken_outcome === "python-error-api-reachable" &&
+      candidate.fallthrough_outcome === "no-python-error-api-observed"
         ? [
             {
               value: candidate.constant,
