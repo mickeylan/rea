@@ -354,6 +354,63 @@ const parseComparisonConstant = (
   return Number.isSafeInteger(number) ? number : null;
 };
 
+const containingBlock = (
+  address: string,
+  blocks: FunctionDossier["basic_blocks"],
+): string | null => {
+  try {
+    const value = BigInt(address);
+    return (
+      blocks.find(
+        ({ start, end }) => value >= BigInt(start) && value <= BigInt(end),
+      )?.start ?? null
+    );
+  } catch {
+    return null;
+  }
+};
+
+const observeOrderedGlobalSlotTables = (dossier: FunctionDossier) => {
+  const grouped = new Map<string, { symbol: string; sources: string[] }>();
+  for (const reference of dossier.referenced_names) {
+    if (
+      !reference.value.startsWith("DAT_") ||
+      !reference.address.startsWith("0x")
+    )
+      continue;
+    const existing = grouped.get(reference.address) ?? {
+      symbol: reference.value,
+      sources: [],
+    };
+    existing.sources.push(reference.source_address);
+    grouped.set(reference.address, existing);
+  }
+  const entries = [...grouped.entries()]
+    .filter(([, { sources }]) => sources.length >= 2)
+    .sort((left, right) =>
+      left[1].sources[0]!.localeCompare(right[1].sources[0]!),
+    );
+  const runs = new Map<string, typeof entries>();
+  for (const entry of entries) {
+    const block = containingBlock(entry[1].sources[0]!, dossier.basic_blocks);
+    if (block === null) continue;
+    const run = runs.get(block) ?? [];
+    run.push(entry);
+    runs.set(block, run);
+  }
+  return [...runs.values()]
+    .filter((run) => run.length >= 2)
+    .map((run) => ({
+      entries: run.map(([slot_address, { symbol, sources }], index) => ({
+        index,
+        slot_address,
+        symbol,
+        source_addresses: [...new Set(sources)].sort(),
+      })),
+      complete: false,
+    }));
+};
+
 const observeDossier = (
   dossier: ReturnType<typeof functionDossierSchema.parse>,
 ): CythonWrapperConventionObservation => {
@@ -404,6 +461,8 @@ const observeDossier = (
             dossier,
           )
         : [],
+    ordered_global_slot_table_candidates:
+      observeOrderedGlobalSlotTables(dossier),
     keyword_orders: [],
     slots: [],
     coverage: {

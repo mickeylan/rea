@@ -257,6 +257,19 @@ export const cythonWrapperConventionObservationSchema = z.strictObject({
       default_known: z.boolean(),
     }),
   ),
+  ordered_global_slot_table_candidates: z.array(
+    z.strictObject({
+      entries: z.array(
+        z.strictObject({
+          index: z.number().int().nonnegative(),
+          slot_address: z.string().min(1),
+          symbol: z.string().min(1),
+          source_addresses: z.array(z.string().min(1)).min(1),
+        }),
+      ),
+      complete: z.boolean(),
+    }),
+  ),
   keyword_orders: z.array(
     z.strictObject({
       names: z.array(z.string().min(1)),
@@ -308,6 +321,9 @@ export const cythonCallingConventionCandidateSchema = z.strictObject({
     cythonWrapperConventionObservationSchema.shape.integer_bound_candidates,
   jump_table_candidates:
     cythonWrapperConventionObservationSchema.shape.jump_table_candidates,
+  ordered_global_slot_table_candidates:
+    cythonWrapperConventionObservationSchema.shape
+      .ordered_global_slot_table_candidates,
   required_slot_count_candidates: z.array(
     z.strictObject({
       value: z.number().int().nonnegative(),
@@ -523,6 +539,12 @@ export const projectCythonCallingConventionCandidate = (
     ...observation.jump_table_candidates.map(
       ({ dispatch_address }) => dispatch_address,
     ),
+    ...observation.ordered_global_slot_table_candidates.flatMap(({ entries }) =>
+      entries.flatMap(({ slot_address, source_addresses }) => [
+        slot_address,
+        ...source_addresses,
+      ]),
+    ),
     ...observation.keyword_orders.flatMap(
       ({ evidence_addresses: addresses }) => addresses,
     ),
@@ -564,6 +586,9 @@ export const projectCythonCallingConventionCandidate = (
     jump_table_candidates: uniqueValues(observation.jump_table_candidates).sort(
       (left, right) =>
         left.dispatch_address.localeCompare(right.dispatch_address),
+    ),
+    ordered_global_slot_table_candidates: uniqueValues(
+      observation.ordered_global_slot_table_candidates,
     ),
     required_slot_count_candidates: requiredSlotCandidates,
     maximum_positional_count_candidates: maximumPositionalCandidates,

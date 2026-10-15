@@ -188,6 +188,7 @@ describe("Cython wrapper convention candidates", () => {
           default_known: false,
         },
       ],
+      ordered_global_slot_table_candidates: [],
       keyword_orders: [
         {
           names: ["self", "prompt", "image", "seed"],
@@ -294,6 +295,7 @@ describe("Cython wrapper convention candidates", () => {
       ],
       integer_bound_candidates: [],
       jump_table_candidates: [],
+      ordered_global_slot_table_candidates: [],
       keyword_orders: [],
       slots: [
         {
