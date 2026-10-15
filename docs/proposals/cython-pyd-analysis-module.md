@@ -63,7 +63,7 @@ Adapter 还会把 `BRANCHIND` 的直接 parameter lineage 与已验证的 native
 
 每个映射目标现在还携带有界 CFG 遍历得到的 direct-call reachability 摘要及其完整性。真实验证中，两表已知的 `17..25` 目标均可达 `FUN_180027200`；共同未知目标 `0x180026ba9` 只能观测到清理/错误调用（包括 `PyErr_Format`），不能到达 body；第二表另一未知目标 `0x18002658b` 可达 body。所有这些遍历均闭合。
 
-领域投影现将语义拆为两组独立候选：由完整参数 lower-bound 比较产生 `required_slot_count_candidates`，由 parameter-driven dispatch 的最大已知 case 产生 `maximum_positional_count_candidates`；候选同时保留 default、unknown mapping 和 case completeness，尚不提升为 Known。真实 wrapper 因而产生 required-slot 候选 `17` 和 maximum-positional 候选 `25`，但 `positional` 仍保持 Unknown。这样不会把“17 个槽位必须最终被填充”错误解释为“调用者必须提供至少 17 个位置参数”。该能力仍不公开为 CLI/MCP 操作。
+领域投影现将语义拆为两组独立候选：由完整参数 lower-bound 比较产生 `required_slot_count_candidates`，由 parameter-driven dispatch 的最大已知 case 产生 `maximum_positional_count_candidates`；候选同时保留 default、unknown mapping 和 case completeness。最终输出另有独立的 `required_slot_count` 与 `maximum_positional_count` Known/Unknown 字段。当前 promotion gate 要求 parser-state 身份、success/error 路径和 out-of-range rejection 闭合，故两者均明确为 Unknown。真实 wrapper 仍保留 required-slot 候选 `17` 和 maximum-positional 候选 `25`，但消费者无法再误把候选当成已证明结论，也不会把“17 个槽位必须最终被填充”错误解释为“调用者必须提供至少 17 个位置参数”。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 

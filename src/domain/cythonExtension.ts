@@ -125,6 +125,10 @@ const knownStringListSchema = z.strictObject({
   status: z.literal("known"),
   value: z.array(z.string().min(1)),
 });
+const knownCountSchema = z.strictObject({
+  status: z.literal("known"),
+  value: z.number().int().nonnegative(),
+});
 const knownPositionalBoundsSchema = z.strictObject({
   status: z.literal("known"),
   minimum: z.number().int().nonnegative(),
@@ -302,6 +306,14 @@ export const cythonCallingConventionCandidateSchema = z.strictObject({
       basis: z.literal("parameter-dispatch-maximum"),
     }),
   ),
+  required_slot_count: z.discriminatedUnion("status", [
+    knownCountSchema,
+    unknownFactSchema,
+  ]),
+  maximum_positional_count: z.discriminatedUnion("status", [
+    knownCountSchema,
+    unknownFactSchema,
+  ]),
   keyword_order: z.discriminatedUnion("status", [
     knownStringListSchema,
     unknownFactSchema,
@@ -432,6 +444,41 @@ export const projectCythonCallingConventionCandidate = (
         ].sort(),
       };
     });
+  const requiredSlotCandidates = uniqueValues(
+    observation.integer_bound_candidates.flatMap((candidate) =>
+      candidate.parameter_operand === "left" &&
+      ["less-than", "signed-less-than"].includes(candidate.comparison) &&
+      candidate.constant >= 0
+        ? [
+            {
+              value: candidate.constant,
+              parameter_ordinal: candidate.parameter_ordinal,
+              comparison_address: candidate.comparison_address,
+              branch_address: candidate.branch_address,
+              basis: "parameter-lower-bound" as const,
+            },
+          ]
+        : [],
+    ),
+  );
+  const maximumPositionalCandidates = uniqueValues(
+    observation.jump_table_candidates.flatMap((candidate) => {
+      const maximum = candidate.known_case_values.at(-1);
+      return maximum === undefined
+        ? []
+        : [
+            {
+              value: maximum,
+              parameter_ordinal: candidate.parameter_ordinal,
+              dispatch_address: candidate.dispatch_address,
+              cases_complete: candidate.cases_complete,
+              default_known: candidate.default_known,
+              unknown_mapping_count: candidate.unknown_mapping_count,
+              basis: "parameter-dispatch-maximum" as const,
+            },
+          ];
+    }),
+  );
   const evidenceAddresses = [
     observation.wrapper.address,
     ...callableNames.map(({ address }) => address),
@@ -492,41 +539,22 @@ export const projectCythonCallingConventionCandidate = (
       (left, right) =>
         left.dispatch_address.localeCompare(right.dispatch_address),
     ),
-    required_slot_count_candidates: uniqueValues(
-      observation.integer_bound_candidates.flatMap((candidate) =>
-        candidate.parameter_operand === "left" &&
-        ["less-than", "signed-less-than"].includes(candidate.comparison) &&
-        candidate.constant >= 0
-          ? [
-              {
-                value: candidate.constant,
-                parameter_ordinal: candidate.parameter_ordinal,
-                comparison_address: candidate.comparison_address,
-                branch_address: candidate.branch_address,
-                basis: "parameter-lower-bound" as const,
-              },
-            ]
-          : [],
-      ),
-    ),
-    maximum_positional_count_candidates: uniqueValues(
-      observation.jump_table_candidates.flatMap((candidate) => {
-        const maximum = candidate.known_case_values.at(-1);
-        return maximum === undefined
-          ? []
-          : [
-              {
-                value: maximum,
-                parameter_ordinal: candidate.parameter_ordinal,
-                dispatch_address: candidate.dispatch_address,
-                cases_complete: candidate.cases_complete,
-                default_known: candidate.default_known,
-                unknown_mapping_count: candidate.unknown_mapping_count,
-                basis: "parameter-dispatch-maximum" as const,
-              },
-            ];
-      }),
-    ),
+    required_slot_count_candidates: requiredSlotCandidates,
+    maximum_positional_count_candidates: maximumPositionalCandidates,
+    required_slot_count: {
+      status: "unknown",
+      reason:
+        requiredSlotCandidates.length === 0
+          ? "No required-slot count candidate was supplied."
+          : "Required-slot candidates are not promoted until parser-state identity and success/error path coverage are established.",
+    },
+    maximum_positional_count: {
+      status: "unknown",
+      reason:
+        maximumPositionalCandidates.length === 0
+          ? "No maximum positional-count candidate was supplied."
+          : "Maximum positional-count candidates are not promoted until dispatch identity and out-of-range rejection are established.",
+    },
     keyword_order:
       keywordOrders.length === 1
         ? { status: "known", value: keywordOrders[0]! }

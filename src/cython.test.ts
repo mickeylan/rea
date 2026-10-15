@@ -256,6 +256,10 @@ describe("Cython wrapper convention candidates", () => {
         basis: "parameter-dispatch-maximum",
       },
     ]);
+    expect(candidate.required_slot_count).toMatchObject({ status: "unknown" });
+    expect(candidate.maximum_positional_count).toMatchObject({
+      status: "unknown",
+    });
     expect(candidate.slots[2]).toMatchObject({
       index: 2,
       presence: "optional",
