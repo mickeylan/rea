@@ -13,6 +13,7 @@ import type {
 } from "../../../src/application/AnalysisProvider.js";
 import type { DirectAnalysisDependencies } from "../../../src/application/DirectAnalysisDependencies.js";
 import { createAnalysisProfile } from "../../../src/domain/analysisProfile.js";
+import { pe } from "../../../src/domain/binaryTarget.fixture.js";
 import { createAnalysisExecution } from "../../../src/application/AnalysisProvider.js";
 import { err, ok } from "../../../src/domain/result.js";
 import {
@@ -137,6 +138,7 @@ interface SnapshotProviderOptions {
   readonly identity?: ProviderIdentity;
   readonly supportedOperations?: readonly CapabilityDescriptor["operation"][];
   readonly limitations?: readonly string[];
+  readonly resultOverrides?: Readonly<Record<string, unknown>>;
 }
 
 const makeProvider = (
@@ -200,6 +202,7 @@ const makeProvider = (
             xrefs: [],
             resolve_containing_procedure: null,
             procedure_pseudo_code: "return 0;",
+            ...options.resultOverrides,
           };
           if (!Object.hasOwn(results, operation))
             throw new Error(
@@ -223,11 +226,18 @@ const makeProvider = (
 const createSnapshotReplayFixture = async (
   directoryPrefix: string,
   snapshotRelativePath = "snapshot.json",
+  targetFile: {
+    readonly name: string;
+    readonly contents: string | Uint8Array;
+  } = {
+    name: "fixture.hop",
+    contents: "fixture",
+  },
 ) => {
   const directory = await createTestTempDirectory(directoryPrefix);
-  const path = join(directory, "fixture.hop");
+  const path = join(directory, targetFile.name);
   const snapshotPath = join(directory, snapshotRelativePath);
-  await writeFile(path, "fixture");
+  await writeFile(path, targetFile.contents);
   const starts: string[] = [];
   const calls: string[] = [];
   const resolutions: string[] = [];
@@ -542,6 +552,59 @@ it.each([
     expect(fixture.calls).toEqual(calls);
   },
 );
+
+it("records and replays Cython extension workflow Evidence", async () => {
+  const fixture = await createSnapshotReplayFixture(
+    "rea-cython-snapshot-replay-",
+    "snapshot.json",
+    { name: "fixture.pyd", contents: pe(0x8664, 64, 0x2002) },
+  );
+  const provider = fixture.createProvider({
+    supportedOperations: workflowProviderOperations,
+    resultOverrides: {
+      list_names: [
+        { address: "0x1000", value: "PyInit_fixture" },
+        { address: "0x1010", value: "__pyx_pw_1fixture" },
+      ],
+      list_strings: [
+        { address: "0x2000", value: "package.module.Widget.build" },
+      ],
+    },
+  });
+  const dependencies = fixture.dependencies(provider);
+  const options = { snapshotPath: fixture.snapshotPath };
+  const first = parseEvidence(
+    await runDirectAnalysis(
+      dependencies,
+      fixture.path,
+      "inspect_cython_extension",
+      {},
+      options,
+    ),
+  );
+  expect(first).toMatchObject({
+    operation: "inspect_cython_extension",
+    provider: { id: "rea-workflow" },
+    normalized_result: {
+      python_extension: { status: "confirmed", module_names: ["fixture"] },
+      cython: { status: "detected" },
+    },
+  });
+  const starts = [...fixture.starts];
+  const calls = [...fixture.calls];
+
+  const replayed = await runDirectAnalysis(
+    dependencies,
+    fixture.path,
+    "inspect_cython_extension",
+    {},
+    options,
+  );
+
+  expect(replayed).toEqual(first);
+  expect(fixture.starts).toEqual(starts);
+  expect(fixture.calls).toEqual(calls);
+});
 
 describe("direct analysis composed snapshot replay", () => {
   it.skipIf(process.platform !== "win32")(
