@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, expect, it } from "vitest";
 
-import type { AnalysisClient } from "../../../src/application/AnalysisProvider.js";
+import {
+  createAnalysisExecution,
+  type AnalysisClient,
+} from "../../../src/application/AnalysisProvider.js";
+import { createAnalysisProfile } from "../../../src/domain/analysisProfile.js";
 import { analysisErrorProjectionSchema } from "../../../src/contracts/errorSchemas.js";
 import { pe } from "../../../src/domain/binaryTarget.fixture.js";
 import { ok } from "../../../src/domain/result.js";
@@ -141,6 +145,56 @@ it("fails fast on malformed names without requesting strings", async () => {
   );
   expect(error.code).toBe("unreadable_output");
   expect(calls).toEqual(["health", "list_names"]);
+});
+
+it("rejects inventories produced under different analysis profiles", async () => {
+  const directory = await createTestTempDirectory("rea-cython-mcp-profile-");
+  const path = join(directory, "profile-mismatch.pyd");
+  await writeFile(path, pe(0x8664, 64, 0x2002));
+  const provider = { id: "fixture", name: "Fixture", version: "1" };
+  const namesProfile = createAnalysisProfile(provider, { fixture: "names" });
+  const stringsProfile = createAnalysisProfile(provider, {
+    fixture: "strings",
+  });
+  const calls: string[] = [];
+  const session = createTestBinarySession(
+    () =>
+      ({
+        execute: (operation) => {
+          calls.push(operation);
+          const value =
+            operation === "list_names"
+              ? [{ address: "0x1000", value: "PyInit_profile_mismatch" }]
+              : operation === "list_strings"
+                ? []
+                : null;
+          return Promise.resolve(
+            ok(
+              createAnalysisExecution(value, provider, {
+                analysisProfile:
+                  operation === "list_strings" ? stringsProfile : namesProfile,
+              }),
+            ),
+          );
+        },
+        close: () => Promise.resolve(ok(null)),
+      }) satisfies AnalysisClient,
+  );
+  const opened = await session.open(path);
+  if (!opened.ok) throw opened.error;
+  const client = await connectSessionServer(session);
+
+  const response = await client.callTool({
+    name: "inspect_cython_extension",
+    arguments: {},
+  });
+
+  expect(response.isError).toBe(true);
+  const error = analysisErrorProjectionSchema.parse(
+    JSON.parse(responseText(response)).error,
+  );
+  expect(error.code).toBe("unreadable_output");
+  expect(calls).toEqual(["health", "list_names", "list_strings"]);
 });
 
 it("fails closed before provider execution without an active target", async () => {
