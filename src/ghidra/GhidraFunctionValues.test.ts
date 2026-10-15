@@ -410,6 +410,42 @@ describe("Ghidra reference and value-flow completeness", () => {
       error: { _tag: "AnalysisOutputError" },
     });
   });
+});
+
+describe("Ghidra p-code relationship integrity", () => {
+  it("rejects contradictory conditional branch polarity", () => {
+    const dossier = ghidraFunctionDossier();
+    if (
+      typeof dossier !== "object" ||
+      dossier === null ||
+      Array.isArray(dossier)
+    )
+      throw new TypeError("Ghidra dossier fixture is invalid");
+    const flow = dossier.native_value_flow;
+    if (typeof flow !== "object" || flow === null || Array.isArray(flow))
+      throw new TypeError("Ghidra p-code fixture is invalid");
+    expect(
+      parseFunctionValueFixture("analyze_function", {
+        ...dossier,
+        native_value_flow: {
+          ...flow,
+          effects: [
+            {
+              operation: "0x401000#0",
+              kind: "conditional_branch",
+              operand_input: null,
+              value_input: 1,
+              branch_target_block: "block:0",
+              branch_fallthrough_block: "block:0",
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisOutputError" },
+    });
+  });
 
   it("rejects p-code relationships that refer to omitted operation IDs", () => {
     const dossier = ghidraFunctionDossier();

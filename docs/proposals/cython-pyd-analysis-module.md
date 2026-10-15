@@ -53,7 +53,9 @@ Bridge 会继续遍历但不序列化超预算 operation，使 `omitted_operatio
 
 同一 3,000-operation 预算现在先保留全部比较、分支、调用和返回根，再保留其 def-use 祖先，最后才按 provider 顺序填充余量。Bridge 单独报告总根数与保留根数。真实 Qwen 验证中，`INPUT_TYPES` body 的 703/703 个语义根和 `enhance_prompt` wrapper 的 308/308 个根均已保留。
 
-每个 operation 现在另有 `input_definitions_complete`，条件分支 effect 在能与 high-pcode block 起始地址精确匹配时携带 `branch_target_block`。真实样本中，`INPUT_TYPES` body 的 165/165 个条件分支均有目标 block 且输入定义完整；`enhance_prompt` wrapper 的 107 个条件分支全部输入定义完整，其中 105 个能精确解析目标 block，另外 2 个保持 Unknown。完整函数仍报告 `truncated=true`，但 adapter 已可仅从定义闭包完整且目标明确的分支筛选 argument-count 候选；不会把 unresolved 分支当作 fallthrough 或猜测边极性。该能力仍不公开为 CLI/MCP 操作。
+每个 operation 现在另有 `input_definitions_complete`。条件分支 effect 在能与 high-pcode block 起始地址精确匹配时携带 `branch_target_block`；当该目标属于当前 block 的两个 successors 且另一条边唯一时，另携带 `branch_fallthrough_block`。两者相同、引用缺失 block 或非条件分支携带极性信息都会被严格拒绝。
+
+真实样本中，`INPUT_TYPES` body 的 165/165 个条件分支均有完整输入定义、taken target 和 fallthrough；`enhance_prompt` wrapper 的 107 个条件分支全部输入定义完整，其中 105 个具有完整极性，另外 2 个保持 Unknown。完整函数仍报告 `truncated=true`，但 adapter 已可仅从定义闭包完整且极性明确的分支筛选 argument-count 候选；不会依赖 successor 顺序或把 unresolved 分支猜成 fallthrough。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 

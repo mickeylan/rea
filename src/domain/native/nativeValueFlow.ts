@@ -54,6 +54,7 @@ export const nativePcodeEffectSchema = z.strictObject({
   operand_input: z.number().int().nonnegative().nullable(),
   value_input: z.number().int().nonnegative().nullable(),
   branch_target_block: z.string().min(1).nullable(),
+  branch_fallthrough_block: z.string().min(1).nullable(),
 });
 
 /** Bounded data-flow observations; STORE is not necessarily a persistent/global write. */

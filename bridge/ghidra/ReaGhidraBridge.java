@@ -1994,6 +1994,12 @@ public final class ReaGhidraBridge extends HeadlessScript {
             : null;
         if (branchTargetBlock == null) effect.add("branch_target_block", JsonNull.INSTANCE);
         else effect.addProperty("branch_target_block", branchTargetBlock);
+        String branchFallthroughBlock = operation.getOpcode() == PcodeOp.CBRANCH
+            ? resolvePcodeBranchFallthroughBlock(operation, branchTargetBlock, blockIds)
+            : null;
+        if (branchFallthroughBlock == null) {
+            effect.add("branch_fallthrough_block", JsonNull.INSTANCE);
+        } else effect.addProperty("branch_fallthrough_block", branchFallthroughBlock);
         destination.add(effect);
     }
 
@@ -2009,6 +2015,28 @@ public final class ReaGhidraBridge extends HeadlessScript {
             if (target.equals(block.getStart())) return blockIds.get(block);
         }
         return null;
+    }
+
+    private String resolvePcodeBranchFallthroughBlock(
+        PcodeOp operation,
+        String targetBlock,
+        Map<PcodeBlockBasic, String> blockIds
+    ) {
+        if (targetBlock == null || operation.getParent() == null) return null;
+        PcodeBlockBasic parent = operation.getParent();
+        if (parent.getOutSize() != 2) return null;
+        String fallthrough = null;
+        boolean targetObserved = false;
+        for (int index = 0; index < parent.getOutSize(); index += 1) {
+            PcodeBlock successor = parent.getOut(index);
+            if (!(successor instanceof PcodeBlockBasic basic)) return null;
+            String successorId = blockIds.get(basic);
+            if (successorId == null) return null;
+            if (targetBlock.equals(successorId)) targetObserved = true;
+            else if (fallthrough == null) fallthrough = successorId;
+            else return null;
+        }
+        return targetObserved ? fallthrough : null;
     }
 
     private JsonElement addressName(JsonObject params) {
