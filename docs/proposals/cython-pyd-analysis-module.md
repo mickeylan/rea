@@ -69,7 +69,9 @@ Adapter 还会把 `BRANCHIND` 的直接 parameter lineage 与已验证的 native
 
 关键字表恢复的下一边界也已落地：adapter 按同一 CFG basic block 分组重复引用的 Ghidra `DAT_*` 全局槽位，并保留源码地址顺序为 `ordered_global_slot_table_candidates`。真实 `enhance_prompt` wrapper 得到一个 25-entry 候选，首尾槽分别为 `0x1800518d8` 与 `0x180050808`，与人工解码的 25 个参数槽数量一致。它仍标记 `complete=false`，且槽值未解码。
 
-`cythonGlobalStringBindingsSchema` 现在独立建模 initializer owner、slot/descriptor/value 地址、解码值、编码、来源与覆盖范围；`resolveCythonKeywordOrder` 只按 canonical slot address 连接 wrapper 顺序与 owner bindings。只有 wrapper table 和 initializer bindings 都完整，且每个槽恰有一个解码值时才返回 Known；缺失、冲突或不完整均返回 Unknown。Provider adapter 尚未能证明 initializer 的 parallel-table ownership，所以真实 `keyword_order` 继续保持 Unknown。该能力仍不公开为 CLI/MCP 操作。
+`cythonGlobalStringBindingsSchema` 现在独立建模 initializer owner、slot/descriptor/value 地址、解码值、编码、来源与覆盖范围；`resolveCythonKeywordOrder` 只按 canonical slot address 连接 wrapper 顺序与 owner bindings。只有 wrapper table 和 initializer bindings 都完整，且每个槽恰有一个解码值时才返回 Known；缺失、冲突或不完整均返回 Unknown。
+
+对真实 `FUN_18002f810` 的结构化 dossier 复核得到 502 个 High P-code operations、107/107 semantic roots、39 个 memory writes、6 个 memory reads、33 个 conditional branches 和 33 个 direct calls，且未截断。descriptor 区域有静态引用 `0x18003d540`，但写入目标通过唯一参数 `param_1` 加常量偏移形成；这意味着 owner 实际表示是“module-state-relative slot”，不能把缓存脚本中的绝对 slot base 当作 provider-neutral ownership 事实。现有 bridge 也尚未输出经证明的 affine effective address 或跨循环同一 induction index。因此 provider adapter 仍拒绝生成真实 initializer bindings，`keyword_order` 继续保持 Unknown。该能力不公开为 CLI/MCP 操作。
 
 ---
 
