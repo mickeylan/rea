@@ -282,6 +282,26 @@ export const cythonCallingConventionCandidateSchema = z.strictObject({
     cythonWrapperConventionObservationSchema.shape.integer_bound_candidates,
   jump_table_candidates:
     cythonWrapperConventionObservationSchema.shape.jump_table_candidates,
+  required_slot_count_candidates: z.array(
+    z.strictObject({
+      value: z.number().int().nonnegative(),
+      parameter_ordinal: z.number().int().nonnegative(),
+      comparison_address: z.string().min(1),
+      branch_address: z.string().min(1),
+      basis: z.literal("parameter-lower-bound"),
+    }),
+  ),
+  maximum_positional_count_candidates: z.array(
+    z.strictObject({
+      value: z.number().int().nonnegative(),
+      parameter_ordinal: z.number().int().nonnegative(),
+      dispatch_address: z.string().min(1),
+      cases_complete: z.boolean(),
+      default_known: z.boolean(),
+      unknown_mapping_count: z.number().int().nonnegative(),
+      basis: z.literal("parameter-dispatch-maximum"),
+    }),
+  ),
   keyword_order: z.discriminatedUnion("status", [
     knownStringListSchema,
     unknownFactSchema,
@@ -471,6 +491,41 @@ export const projectCythonCallingConventionCandidate = (
     jump_table_candidates: uniqueValues(observation.jump_table_candidates).sort(
       (left, right) =>
         left.dispatch_address.localeCompare(right.dispatch_address),
+    ),
+    required_slot_count_candidates: uniqueValues(
+      observation.integer_bound_candidates.flatMap((candidate) =>
+        candidate.parameter_operand === "left" &&
+        ["less-than", "signed-less-than"].includes(candidate.comparison) &&
+        candidate.constant >= 0
+          ? [
+              {
+                value: candidate.constant,
+                parameter_ordinal: candidate.parameter_ordinal,
+                comparison_address: candidate.comparison_address,
+                branch_address: candidate.branch_address,
+                basis: "parameter-lower-bound" as const,
+              },
+            ]
+          : [],
+      ),
+    ),
+    maximum_positional_count_candidates: uniqueValues(
+      observation.jump_table_candidates.flatMap((candidate) => {
+        const maximum = candidate.known_case_values.at(-1);
+        return maximum === undefined
+          ? []
+          : [
+              {
+                value: maximum,
+                parameter_ordinal: candidate.parameter_ordinal,
+                dispatch_address: candidate.dispatch_address,
+                cases_complete: candidate.cases_complete,
+                default_known: candidate.default_known,
+                unknown_mapping_count: candidate.unknown_mapping_count,
+                basis: "parameter-dispatch-maximum" as const,
+              },
+            ];
+      }),
     ),
     keyword_order:
       keywordOrders.length === 1

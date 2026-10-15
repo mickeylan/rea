@@ -108,6 +108,7 @@ describe("Cython extension observations", () => {
 
 // oxlint-disable-next-line max-lines-per-function -- keep candidate conflict and provenance semantics together.
 describe("Cython wrapper convention candidates", () => {
+  // oxlint-disable-next-line max-lines-per-function -- one complete observation proves projection across related candidate facets.
   it("projects a normalized wrapper convention with retained evidence", () => {
     const candidate = projectCythonCallingConventionCandidate({
       wrapper: { address: "0x1000", name: "__pyx_pw_1module_1build" },
@@ -124,7 +125,18 @@ describe("Cython wrapper convention candidates", () => {
       positional_bounds: [
         { minimum: 2, maximum: 4, evidence_address: "0x1030" },
       ],
-      integer_bound_candidates: [],
+      integer_bound_candidates: [
+        {
+          parameter_ordinal: 2,
+          comparison: "signed-less-than",
+          parameter_operand: "left",
+          constant: 17,
+          comparison_address: "0x1034",
+          branch_address: "0x1036",
+          taken_block: "block:error",
+          fallthrough_block: "block:success",
+        },
+      ],
       jump_table_candidates: [
         {
           parameter_ordinal: 2,
@@ -223,6 +235,26 @@ describe("Cython wrapper convention candidates", () => {
         cases_complete: true,
         default_known: false,
       }),
+    ]);
+    expect(candidate.required_slot_count_candidates).toEqual([
+      {
+        value: 17,
+        parameter_ordinal: 2,
+        comparison_address: "0x1034",
+        branch_address: "0x1036",
+        basis: "parameter-lower-bound",
+      },
+    ]);
+    expect(candidate.maximum_positional_count_candidates).toEqual([
+      {
+        value: 4,
+        parameter_ordinal: 2,
+        dispatch_address: "0x1038",
+        cases_complete: true,
+        default_known: false,
+        unknown_mapping_count: 1,
+        basis: "parameter-dispatch-maximum",
+      },
     ]);
     expect(candidate.slots[2]).toMatchObject({
       index: 2,
