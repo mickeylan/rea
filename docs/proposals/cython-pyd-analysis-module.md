@@ -45,7 +45,9 @@
 
 `GhidraCythonWrapperConventionAdapter` 已接入现有结构化 `analyze_function` dossier。首个保守版本只投影 wrapper 身份、直接 callee 候选、call-site 来源地址和 value-flow 截断状态；它明确不读取 pseudocode 文本，也不会将任意 callee 宣称为 implementation body。
 
-Ghidra bridge 的通用 high-p-code contract 现已进一步包含稳定的 `block_id`、每个 block 的起始地址、保留 operation IDs 和 successor IDs。TypeScript 边界严格检查 block/operation/successor 引用、唯一性与地址格式。该信息仍只是 decompiler CFG 事实，不表达 Cython 参数语义；参数范围、关键字表和默认槽位继续保持 Unknown，直到真实 fixture 能证明完整 parser path。当前 Windows native controls 与 6.5.0 版本不匹配，因此本轮真实 Qwen provider 验证明确未完成，该能力仍不公开为 CLI/MCP 操作。
+Ghidra bridge 的通用 high-p-code contract 现已进一步包含稳定的 `block_id`、每个 block 的起始地址、保留 operation IDs 和 successor IDs。TypeScript 边界严格检查 block/operation/successor 引用、唯一性与地址格式。该信息仍只是 decompiler CFG 事实，不表达 Cython 参数语义。
+
+使用与 6.5.0 匹配且经 manifest/digest 验证的 Windows native controls 后，真实 Qwen `.pyd` 已成功返回该新 contract：`INPUT_TYPES` body 为 3,000 个保留 operations、330 个 blocks，`enhance_prompt` wrapper 为 3,000 个保留 operations、140 个 blocks；两者均无 null block identity 或悬空 successor。但两者也都命中当前 3,000-operation 上限并报告 `truncated=true`，因此不能据此宣称完整 parser path，也不能提升参数范围、关键字表或默认槽位。下一步应设计有界的定向 parser-fact 提取，而不是无条件扩大完整 p-code 输出。该能力仍不公开为 CLI/MCP 操作。
 
 ---
 
