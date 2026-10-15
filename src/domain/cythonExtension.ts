@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { jsonValueSchema } from "./jsonValue.js";
+
 /** Python value categories suggested by CPython API observations. */
 export const pythonValueCategorySchema = z.enum([
   "str",
@@ -111,6 +113,132 @@ export type CythonExtensionInspection = z.infer<
   typeof cythonExtensionInspectionSchema
 >;
 
+const unknownFactSchema = z.strictObject({
+  status: z.literal("unknown"),
+  reason: z.string().min(1),
+});
+const knownStringSchema = z.strictObject({
+  status: z.literal("known"),
+  value: z.string().min(1),
+});
+const knownStringListSchema = z.strictObject({
+  status: z.literal("known"),
+  value: z.array(z.string().min(1)),
+});
+const knownPositionalBoundsSchema = z.strictObject({
+  status: z.literal("known"),
+  minimum: z.number().int().nonnegative(),
+  maximum: z.number().int().nonnegative(),
+});
+const slotNameSchema = z.discriminatedUnion("status", [
+  knownStringSchema,
+  unknownFactSchema,
+]);
+const slotPresenceSchema = z.enum(["required", "optional", "unknown"]);
+const slotDefaultSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("static"),
+    value: jsonValueSchema,
+    evidence_address: z.string().min(1),
+  }),
+  z.strictObject({
+    status: z.literal("none-observed"),
+    evidence_address: z.string().min(1),
+  }),
+  unknownFactSchema,
+]);
+
+/** Provider-neutral observations about one generated Cython wrapper. */
+export const cythonWrapperConventionObservationSchema = z.strictObject({
+  wrapper: z.strictObject({
+    address: z.string().min(1),
+    name: z.string().min(1).nullable(),
+  }),
+  callable_names: z.array(locatedValueSchema),
+  implementation_candidates: z.array(
+    z.strictObject({
+      address: z.string().min(1),
+      name: z.string().min(1).nullable(),
+      relationship: z.enum(["callee", "tail-call", "unknown"]),
+      confidence: z.enum(["candidate", "derived"]),
+      evidence_addresses: z.array(z.string().min(1)),
+    }),
+  ),
+  positional_bounds: z.array(
+    z.strictObject({
+      minimum: z.number().int().nonnegative(),
+      maximum: z.number().int().nonnegative(),
+      evidence_address: z.string().min(1),
+    }),
+  ),
+  keyword_orders: z.array(
+    z.strictObject({
+      names: z.array(z.string().min(1)),
+      evidence_addresses: z.array(z.string().min(1)).min(1),
+    }),
+  ),
+  slots: z.array(
+    z.strictObject({
+      index: z.number().int().nonnegative(),
+      name: z.string().min(1).optional(),
+      presence: z.enum(["required", "optional"]).optional(),
+      default: z
+        .discriminatedUnion("status", [
+          z.strictObject({
+            status: z.literal("static"),
+            value: jsonValueSchema,
+          }),
+          z.strictObject({ status: z.literal("none-observed") }),
+        ])
+        .optional(),
+      evidence_address: z.string().min(1),
+    }),
+  ),
+  coverage: z.strictObject({
+    wrapper_complete: z.boolean(),
+    parser_paths_complete: z.boolean(),
+    truncated: z.boolean(),
+  }),
+  limitations: z.array(z.string()),
+});
+export type CythonWrapperConventionObservation = z.infer<
+  typeof cythonWrapperConventionObservationSchema
+>;
+
+/** Conservative candidate calling convention; unknown facts remain explicit. */
+export const cythonCallingConventionCandidateSchema = z.strictObject({
+  wrapper: cythonWrapperConventionObservationSchema.shape.wrapper,
+  callable_name_candidate: z.discriminatedUnion("status", [
+    knownStringSchema,
+    unknownFactSchema,
+  ]),
+  implementation_candidates:
+    cythonWrapperConventionObservationSchema.shape.implementation_candidates,
+  positional: z.discriminatedUnion("status", [
+    knownPositionalBoundsSchema,
+    unknownFactSchema,
+  ]),
+  keyword_order: z.discriminatedUnion("status", [
+    knownStringListSchema,
+    unknownFactSchema,
+  ]),
+  slots: z.array(
+    z.strictObject({
+      index: z.number().int().nonnegative(),
+      name: slotNameSchema,
+      presence: slotPresenceSchema,
+      default: slotDefaultSchema,
+      evidence_addresses: z.array(z.string().min(1)),
+    }),
+  ),
+  coverage: cythonWrapperConventionObservationSchema.shape.coverage,
+  evidence_addresses: z.array(z.string().min(1)),
+  limitations: z.array(z.string()),
+});
+export type CythonCallingConventionCandidate = z.infer<
+  typeof cythonCallingConventionCandidateSchema
+>;
+
 const compareObservation = (
   left: CythonExtensionObservation,
   right: CythonExtensionObservation,
@@ -130,10 +258,164 @@ const uniqueObservations = (
 const isCythonMarker = (value: string): boolean =>
   /(?:^|\.)(?:__pyx_|__Pyx_)/u.test(value);
 
-/**
- * Project complete provider inventories without claiming recovered source,
- * functions, classes, signatures, or runtime behavior.
- */
+const sameJson = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const uniqueValues = <T>(values: readonly T[]): T[] => {
+  const unique = new Map<string, T>();
+  for (const value of values) unique.set(JSON.stringify(value), value);
+  return [...unique.values()];
+};
+
+/** Project normalized wrapper observations without promoting conflicts to facts. */
+export const projectCythonCallingConventionCandidate = (
+  raw: CythonWrapperConventionObservation,
+): CythonCallingConventionCandidate => {
+  const observation = cythonWrapperConventionObservationSchema.parse(raw);
+  const callableNames = uniqueObservations(observation.callable_names);
+  const bounds = uniqueValues(
+    observation.positional_bounds.map(({ minimum, maximum }) => ({
+      minimum,
+      maximum,
+    })),
+  );
+  const keywordOrders = uniqueValues(
+    observation.keyword_orders.map(({ names }) => names),
+  );
+  const slots = [...new Set(observation.slots.map(({ index }) => index))]
+    .sort((left, right) => left - right)
+    .map((index) => {
+      const observations = observation.slots.filter(
+        (candidate) => candidate.index === index,
+      );
+      const names = uniqueValues(
+        observations.flatMap(({ name }) => (name === undefined ? [] : [name])),
+      );
+      const presences = uniqueValues(
+        observations.flatMap(({ presence }) =>
+          presence === undefined ? [] : [presence],
+        ),
+      );
+      const defaults = observations.filter(
+        ({ default: value }) => value !== undefined,
+      );
+      const uniqueDefaults = uniqueValues(
+        defaults.map(({ default: value }) => value),
+      );
+      const defaultObservation =
+        uniqueDefaults.length === 1
+          ? defaults.find(({ default: value }) =>
+              sameJson(value, uniqueDefaults[0]),
+            )
+          : undefined;
+      return {
+        index,
+        name:
+          names.length === 1
+            ? { status: "known" as const, value: names[0]! }
+            : {
+                status: "unknown" as const,
+                reason:
+                  names.length === 0
+                    ? "No slot name observation was supplied."
+                    : "Conflicting slot name observations were supplied.",
+              },
+        presence: presences.length === 1 ? presences[0]! : ("unknown" as const),
+        default:
+          uniqueDefaults.length === 1 &&
+          defaultObservation?.default !== undefined
+            ? defaultObservation.default.status === "static"
+              ? {
+                  status: "static" as const,
+                  value: defaultObservation.default.value,
+                  evidence_address: defaultObservation.evidence_address,
+                }
+              : {
+                  status: "none-observed" as const,
+                  evidence_address: defaultObservation.evidence_address,
+                }
+            : {
+                status: "unknown" as const,
+                reason:
+                  uniqueDefaults.length === 0
+                    ? "No static default observation was supplied."
+                    : "Conflicting static default observations were supplied.",
+              },
+        evidence_addresses: [
+          ...new Set(
+            observations.map(({ evidence_address }) => evidence_address),
+          ),
+        ].sort(),
+      };
+    });
+  const evidenceAddresses = [
+    observation.wrapper.address,
+    ...callableNames.map(({ address }) => address),
+    ...observation.implementation_candidates.flatMap(
+      ({ evidence_addresses: addresses }) => addresses,
+    ),
+    ...observation.positional_bounds.map(
+      ({ evidence_address }) => evidence_address,
+    ),
+    ...observation.keyword_orders.flatMap(
+      ({ evidence_addresses: addresses }) => addresses,
+    ),
+    ...observation.slots.map(({ evidence_address }) => evidence_address),
+  ];
+
+  return cythonCallingConventionCandidateSchema.parse({
+    wrapper: observation.wrapper,
+    callable_name_candidate:
+      callableNames.length === 1
+        ? { status: "known", value: callableNames[0]!.value }
+        : {
+            status: "unknown",
+            reason:
+              callableNames.length === 0
+                ? "No callable name observation was supplied."
+                : "Conflicting callable name observations were supplied.",
+          },
+    implementation_candidates: uniqueValues(
+      observation.implementation_candidates,
+    ).sort((left, right) => left.address.localeCompare(right.address)),
+    positional:
+      bounds.length === 1 && bounds[0]!.minimum <= bounds[0]!.maximum
+        ? { status: "known", ...bounds[0]! }
+        : {
+            status: "unknown",
+            reason:
+              bounds.length === 0
+                ? "No positional bound observation was supplied."
+                : "Conflicting or invalid positional bound observations were supplied.",
+          },
+    keyword_order:
+      keywordOrders.length === 1
+        ? { status: "known", value: keywordOrders[0]! }
+        : {
+            status: "unknown",
+            reason:
+              keywordOrders.length === 0
+                ? "No keyword order observation was supplied."
+                : "Conflicting keyword order observations were supplied.",
+          },
+    slots,
+    coverage: observation.coverage,
+    evidence_addresses: [...new Set(evidenceAddresses)].sort(),
+    limitations: [
+      "The native ABI signature is not a Python calling convention.",
+      "Wrapper/body ownership remains a candidate unless explicit relationship evidence supports it.",
+      ...observation.limitations,
+      ...(!observation.coverage.wrapper_complete ||
+      !observation.coverage.parser_paths_complete ||
+      observation.coverage.truncated
+        ? [
+            "Incomplete wrapper or parser-path coverage prevents a complete calling-convention claim.",
+          ]
+        : []),
+    ],
+  });
+};
+
 export const inspectCythonExtensionInventories = (input: {
   readonly names: readonly CythonExtensionObservation[];
   readonly strings: readonly CythonExtensionObservation[];
