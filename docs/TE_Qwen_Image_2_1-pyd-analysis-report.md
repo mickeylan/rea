@@ -262,7 +262,21 @@ Several duplicate defined strings (`prompt`, `image`, `temperature`) had no dire
 
 The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. The retained storage value is constructed with the exact named fields `llm`, `settings`, and `chat_handler`. Reuse occurs when an existing storage object has a non-`None` `model` whose `settings` compare equal to the newly constructed settings dictionary; that path logs `TE Qwen Image 2.1 local model reusing model=%s` and returns the existing `model`. A mismatch proceeds to a new load and replaces the storage state.
 
-The settings dictionary passed into `llama_cpp.Llama` contains observed keys `model_path`, `chat_handler`, `n_ctx`, `n_gpu_layers`, and `verbose`; `n_ctx` defaults from `DEFAULT_CONTEXT_LENGTH` and is coerced with `int`, while `verbose` is set false. If `_llama_argument_supported("ctx_checkpoints")` reports support, the dictionary also receives `ctx_checkpoints`. The exact values associated with `model_path`, `chat_handler`, `n_gpu_layers`, and `ctx_checkpoints` still require deeper value-flow reconstruction.
+The settings dictionary passed into `llama_cpp.Llama` is now reconstructed as:
+
+```python
+settings = {
+    "model_path": resolved_model_path,
+    "chat_handler": selected_chat_handler,
+    "n_ctx": int(config.get("n_ctx", DEFAULT_CONTEXT_LENGTH)),
+    "n_gpu_layers": -1,
+    "verbose": False,
+}
+if _llama_argument_supported("ctx_checkpoints"):
+    settings["ctx_checkpoints"] = 0
+```
+
+The numeric constants come from the Cython constant initializer: `n_gpu_layers` uses `PyLong_FromLong(0xFFFFFFFF)`, which is signed `-1` on the Windows ABI, while `ctx_checkpoints` uses the initialized integer zero. The unresolved parts are how `resolved_model_path` and `selected_chat_handler` are produced for each branch.
 
 ### Family selection
 
@@ -321,7 +335,7 @@ The following remain intentionally unresolved:
 - API request construction, authentication, and provider-specific response handling.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
-- Remaining local model constructor values (`model_path`, `chat_handler`, `n_gpu_layers`, and optional `ctx_checkpoints`) and their exact contribution to cache identity.
+- The exact `resolved_model_path` normalization and complete per-family `selected_chat_handler` construction.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
 
 ## Reproduction commands
