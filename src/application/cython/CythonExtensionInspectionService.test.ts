@@ -141,6 +141,22 @@ describe("CythonExtensionInspectionService", () => {
     if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
   });
 
+  it("does not invoke provider primitives after prior cancellation", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const analysis = new RecordingAnalysis(nameInventory, stringInventory);
+
+    const result = await new CythonExtensionInspectionService().inspect(
+      analysis,
+      target,
+      { signal: controller.signal },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(analysis.calls).toEqual([]);
+    if (!result.ok) expect(result.error._tag).toBe("AnalysisCancelledError");
+  });
+
   it("honors cancellation between primitive observations", async () => {
     const controller = new AbortController();
     const analysis = new RecordingAnalysis(nameInventory, stringInventory, () =>
