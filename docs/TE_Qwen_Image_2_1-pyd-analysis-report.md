@@ -367,16 +367,16 @@ The postprocessing helpers resolve to these static boundaries:
 
 1. remove `<think\\b[^>]*>.*?</think>` with `IGNORECASE | DOTALL`;
 2. if a case-insensitive `</think>` remains, remove at most one leading `^.*?</think>\\s*` region with `IGNORECASE | DOTALL`;
-3. perform two retained literal `replace` calls whose argument tuples are not yet decoded;
+3. perform `text.replace("<think>", "").replace("</think>", "")`;
 4. remove fenced ` ```thinking\\b.*?``` ` and ` ```thought\\b.*?``` ` regions with `IGNORECASE | DOTALL`;
 5. remove `<思考>.*?</思考>` and `【思考】.*?【/思考】` with `DOTALL`;
 6. strip outer whitespace.
 
-This establishes the exact regular-expression set and order while leaving only the two ordinary `replace(old, new)` tuple values Unknown.
+The ordinary replacements come from constant tuples `("<think>", "")` and `("</think>", "")` initialized by `FUN_18002f440`; the complete cleanup sequence and order are therefore statically recovered.
 
 `_strip_code_fence` converts input to text and strips outer whitespace. It removes a fence only when the entire value matches the case-insensitive expression ` ```(?:json|text|markdown)?\\s*([\\s\\S]*?)\\s*``` `, then returns capture group 1 after `strip()`. Otherwise it returns the already-stripped original text; embedded or partial fences are not removed by this helper.
 
-`_repair_mojibake` converts falsey input to `""`. A retained marker/scoring predicate decides whether repair is worth attempting. When selected, it performs the equivalent codec round trip `text.encode("latin-1").decode("utf-8")`. It computes retained scores for original and candidate text and returns the candidate only when the candidate score compares greater; otherwise it preserves the original. Matching codec failures return the original, while unrelated exceptions propagate. The exact marker sets and score terms live in unresolved initialized tuples/generator constants and remain Unknown.
+`_repair_mojibake` converts falsey input to `""`. Its initialized mojibake marker tuple is exactly `("Ã", "Â", "æ", "å", "ç", "è", "é", "ï")`; a retained marker/scoring predicate decides whether repair is worth attempting. When selected, it performs the equivalent codec round trip `text.encode("latin-1").decode("utf-8")`. It computes retained scores for original and candidate text and returns the candidate only when the candidate score compares greater; otherwise it preserves the original. Matching codec failures return the original, while unrelated exceptions propagate. The remaining score terms and weights are retained in generator bodies and remain Unknown.
 
 `_parse_result` applies `_strip_code_fence`, then `_repair_mojibake`. A falsey result raises:
 
@@ -685,7 +685,7 @@ The following remain intentionally unresolved:
 
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
 - The exact endpoint suffix selected for every `/v1` and `api.deepseek.com` URL combination where decompiler variable reuse obscures a concatenation operand.
-- The two recursive response-fallback keys, `read_content`'s complete accepted shape set, the two ordinary literal replacements inside `_clean_think_blocks`, and the mojibake marker/score tables retained in initialized globals.
+- The two recursive response-fallback keys, `read_content`'s complete accepted shape set, and the remaining mojibake scoring terms and weights.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Remaining fallback multimodal handler constructor details and template adaptation edge cases.
