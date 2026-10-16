@@ -347,10 +347,20 @@ For a status below 400, the helper calls `response.json()`. If JSON decoding mat
 2. otherwise try top-level `text` with the same non-empty string rule;
 3. iterate `output` (falsey/missing becomes empty), skip non-mappings and entries whose `type == "reasoning"`, and collect readable `content` and `text` fragments;
 4. iterate `choices`; for a mapping with mapping-like `message`, read only `message.content`, otherwise accept direct string `choice.text`;
-5. inspect exactly two still-unresolved recursive fallback keys and recursively parse mapping values;
+5. inspect fallback keys `data` and then `response`; recursively parse each mapping value;
 6. newline-join retained fragments and strip the result.
 
-A truthy non-iterable `output`/`choices`, or an operation failure while reading, comparing, iterating, joining, or stripping, propagates an exception. If no fragment is recovered, the normal nonraising result is `""`. The internal `read_content` helper and the two recursive key identities remain Unknown.
+A truthy non-iterable `output`/`choices`, or an operation failure while reading, comparing, iterating, joining, or stripping, propagates an exception. If no fragment is recovered, the normal nonraising result is `""`.
+
+The nested `read_content` wrapper/body resolve to `FUN_18001a600` / `FUN_18001a810` (514 / 1,457 bytes). It returns a list of fragments:
+
+- a string becomes `[value.strip()]` when non-empty, otherwise `[]`;
+- a supported sequence is traversed in order; exact lists and tuples have optimized paths, while other accepted sequence values use iteration;
+- only mapping elements contribute: for each mapping it recursively appends fragments from `item.get("text")`, then `item.get("content")`;
+- non-mapping elements and unsupported non-string/non-sequence inputs contribute nothing;
+- iteration, `get`, recursive conversion, or stripping failures propagate.
+
+The recursive fallback key tuple `("data", "response")` is initialized by `FUN_18002f440`, establishing both key identity and order.
 
 ### Text cleanup and result parsing
 
@@ -685,7 +695,7 @@ The following remain intentionally unresolved:
 
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
 - The exact endpoint suffix selected for every `/v1` and `api.deepseek.com` URL combination where decompiler variable reuse obscures a concatenation operand.
-- The two recursive response-fallback keys, `read_content`'s complete accepted shape set, and the remaining mojibake scoring terms and weights.
+- The remaining mojibake scoring terms and weights.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Remaining fallback multimodal handler constructor details and template adaptation edge cases.
