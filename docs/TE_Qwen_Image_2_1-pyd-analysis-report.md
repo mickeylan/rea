@@ -392,6 +392,108 @@ response.json()
 
 `_call_chat_completion` separately inspects a callable signature and keyword parameter dictionary before invoking a chat-completion callable. Its relationship to the current `requests.post` branch is not proven by a direct call edge in `_request_api`, so it is retained as a related helper rather than claimed as the active transport.
 
+## Official PE route
+
+The `本地官方PE` branch selects one of the two schema choices according to task mode: the 文生图 PE model for text-to-image and the 图生图 PE model for image-to-image. It then calls `_request_official_pe` with seven keyword arguments:
+
+```python
+_request_official_pe(
+    user_prompt=user_prompt,
+    system_prompt=system_prompt,
+    model_name=selected_official_model,
+    max_output_tokens=max_output_tokens,
+    seed=seed,
+    thinking=bool(enable_thinking),
+    image_sources=image_sources if image_to_image else (),
+)
+```
+
+The image-to-image/no-image guard runs earlier and raises `图生图模式需要连接图片输入。`, so the official image route does not normally receive an empty source collection. The text-to-image route deliberately passes an empty tuple. The returned object enters the same final success path without another `enhance_prompt`-level parsing call.
+
+The method-definition record resolves `_request_official_pe` to wrapper `FUN_18001fbc0` (1,166 bytes) and implementation `FUN_180020240` (5,283 bytes).
+
+### Official model loading and cache identity
+
+`TEQwenImage21OfficialStorage` has class attribute `model = None`, `load(model_name)`, and `unload()`. `load` strips the requested name and rejects empty values or the UI placeholder prefix with:
+
+```
+未找到官方 PE 模型，请把 qwen_image_2.1_pe 模型放到 models/text_encoders/。
+```
+
+Reuse occurs when the stored object's `model_name` equals the normalized requested name. Otherwise loading is destructive-first: it logs the new name, calls `unload()`, resolves the checkpoint through `folder_paths.get_full_path_or_raise("text_encoders", model_name)`, and executes:
+
+```python
+clip = comfy_sd.load_clip(
+    ckpt_paths=[resolved_path],
+    embedding_directory=folder_paths.get_folder_paths("embeddings"),
+    clip_type=comfy_sd.CLIPType.QWEN_IMAGE,
+)
+storage.model = TEQwenImage21OfficialModel(
+    clip=clip,
+    model_name=model_name,
+)
+```
+
+The model cache identity is the normalized `model_name`. The stored object has exactly the observed fields `clip` and `model_name`.
+
+`unload()` logs and returns when no model is loaded. For a populated entry it unloads the CLIP patcher through Comfy model-management, with an observed `unload_model_and_clones(..., all_devices=True)` path, clears `storage.model`, calls `gc.collect()`, and calls `mm.soft_empty_cache()`. Cleanup failures propagate; exception state is preserved around part of the unload sequence.
+
+### Official prompt and image preprocessing
+
+Each non-`None` image source is passed through `_resize_image_tensor_max_pixels` and appended in source order. The text-only prompt is assembled as:
+
+```
+<start_of_turn>system
+{system_prompt}<end_of_turn>
+<start_of_turn>user
+User Raw Input Prompt: {user_prompt}.<end_of_turn>
+<start_of_turn>model
+```
+
+When at least one resized image is present, the user turn instead includes:
+
+```
+<start_of_turn>user
+
+<image_soft_token>
+
+User Raw Input Prompt: {user_prompt}.<end_of_turn>
+<start_of_turn>model
+```
+
+The stored CLIP object receives:
+
+```python
+tokens = model.clip.tokenize(
+    prompt,
+    images=resized_images,
+    thinking=bool(thinking),
+)
+```
+
+### Official generation and output
+
+The exact generation call is:
+
+```python
+generated = model.clip.generate(
+    tokens,
+    do_sample=True,
+    max_length=max(int(max_output_tokens or DEFAULT_MAX_OUTPUT_TOKENS), 256),
+    temperature=0.7,
+    top_k=20,
+    top_p=0.95,
+    min_p=0.0,
+    repetition_penalty=1.05,
+    seed=_normalize_seed(seed),
+    presence_penalty=0.0,
+)
+text = model.clip.decode(generated)
+result = _parse_result(_clean_think_blocks(str(text)))
+```
+
+The result is logged through `_text_signature` and returned to `enhance_prompt`. Any tokenize, generate, decode, cleanup, parse, load, or logging failure follows the Python exception path.
+
 ## Local model route
 
 ### Entry and configuration
@@ -422,7 +524,24 @@ The local body loads `TEQwenImage21LocalStorage.load(_local_config(...))` and bu
 {"role": "system", "content": system_prompt}
 ```
 
-With no images, the user message is `{"role": "user", "content": user_prompt}`. With images, `content` becomes a list whose first element is `{"type": "text", "text": user_prompt}` and whose remaining elements come from the eight-image generator. The generator's exact image mapping remains unresolved, so the report does not assume that its schema is identical to the API transport's `input_image` representation.
+With no images, the user message is `{"role": "user", "content": user_prompt}`. With images, the exact content is:
+
+```python
+[
+    {"type": "text", "text": user_prompt},
+    *(
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "data:image/jpeg;base64," + f"{image}",
+            },
+        }
+        for image in image_base64_list
+    ),
+]
+```
+
+Items preserve the input image order; text is always first. The JPEG data-URI prefix is fixed and non-string image values are formatted to text. This differs from the API Responses payload, which uses flat `{"type": "input_image", "image_url": ...}` items.
 
 The request parameter dictionary is exact:
 
