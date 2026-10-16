@@ -1,6 +1,6 @@
 # TE_Qwen Image 2.1 `.pyd` analysis report
 
-> Updated: 2026-10-15
+> Updated: 2026-10-16
 > Target: `TE_Qwen_Image_2_1_Prompt_Enhancer.pyd`
 > SHA-256: `17aa8af94035109e882fc4477f21e527d0fef519d38c98c3a730fcda62a42b42`
 > Provider: Ghidra 12.1.4 through REA
@@ -212,11 +212,29 @@ def enhance_prompt(
     ...
 ```
 
-The Cython wrapper accepts 17–25 positional values including `self`, fills the final eight slots with `None` when omitted, and rejects missing, excess, duplicate, or unexpected arguments. This confirms the order and optionality but not Python source annotations.
+The decoded wrapper dispatch has positional-count cases `0..25`, then merges keyword assignments into the same 25 destination slots. It requires slots `0..16` to be populated, fills slots `17..24` with `None` when absent, and has explicit missing, excess, duplicate, and unexpected-argument error paths. Therefore `17` is the required populated-slot count, not a minimum caller-supplied positional count. All 25 slots participate in positional dispatch, so none of the recovered parameters is keyword-only; however, the public machine-readable convention model continues to retain the final positional bounds as Unknown until parser-state identity and out-of-range dispatch ownership are represented structurally. This confirms the manually decoded order and optionality but not Python source annotations.
 
-On the successful paths, the implementation retains the cleaned/generated prompt object, constructs `PyTuple_New(1)`, stores that object at index 0, and returns the tuple. The compatible high-level return shape is therefore `(enhanced_prompt,)`.
+### Terminal return paths
 
-The empty-input branch is also statically resolved: the input is converted to text, stripped, and tested for nonzero Unicode length. An empty result logs `TE Qwen Image 2.1 execute skipped: prompt is empty` and returns the module constant `DAT_180050700`, initialized as the one-element tuple `("",)`. A separate validation branch raises the retained message `图生图模式需要连接图片输入。` when image-to-image mode has no connected image input.
+`FUN_180027200` has one machine-level return instruction at `0x18002a09f`. All semantic paths converge through cleanup, with `0x18002a073` copying the retained return carrier into `RAX`. Backward tracing separates three outcomes:
+
+| Outcome                            | Return value                                           | Static evidence                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generated success                  | Newly allocated one-element tuple `(enhanced_prompt,)` | API, local and official-provider success routes converge at `0x180029826`. `0x180029992` supplies tuple size `1`; `0x180029997` calls `PyTuple_New`; `0x1800299a9` increments the cleaned/generated prompt; `0x1800299bc` calls `PyTuple_SetItem` for index `0`; construction success leaves through `0x1800299c4`. |
+| Empty normalized prompt            | Retained module tuple `("",)`                          | The skip branch logs `TE Qwen Image 2.1 execute skipped: prompt is empty`, loads `DAT_180050700` at `0x18002814f`, increments it at `0x180028156`, and moves it into the return carrier at `0x18002815c`. Module initialization identifies this constant as `("",)`.                                                |
+| Error or raised validation failure | `NULL`, with the Python exception retained/propagated  | Failure paths converge on the error hub near `0x180029ea9`; the generated exception helper records the method context, and `0x180029f8d` clears the return carrier before common cleanup.                                                                                                                           |
+
+The image-to-image/no-image branch belongs to the error outcome: it raises the retained message `图生图模式需要连接图片输入。`; it does not return a warning object.
+
+Other tuple allocations in the body are not public node returns. Static lifetime and use evidence separates them as helper inputs or generator state:
+
+- an eight-element tuple captures image inputs for generator processing;
+- a fifteen-element tuple is passed to `_settings_signature`;
+- an eight-element tuple carries the image collection to image/provider helpers;
+- two-, six-, seven-, and eight-element tuples serve as vectorcall keyword-name or argument metadata for `_build_system_prompt`, `_request_api`, `_request_official_pe`, and `_request_local`;
+- each is consumed, transferred, or decremented before the terminal return convergence.
+
+A failure of the public `PyTuple_New(1)` or its item insertion follows error cleanup, so a partially constructed tuple cannot escape. The compatible success return shape is therefore `(enhanced_prompt,)`; empty input returns `("",)`; Python-level failures return no value because the native wrapper returns `NULL` with an exception.
 
 ### Normalization helpers
 
