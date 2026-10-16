@@ -339,17 +339,56 @@ API 调用失败 HTTP <status>: <text>
 
 For a status below 400, the helper calls `response.json()`. If JSON decoding matches either of two retained exception-class globals, it reads and strips `response.text` and raises `API 返回格式异常：<text>`. Other exceptions propagate. The two caught exception identities remain Unknown.
 
-### Response extraction and final cleanup
+### Exact response precedence
 
-`_extract_response_text` supports several statically observed response shapes rather than assuming one provider schema:
+`_extract_response_text` applies this observed priority:
 
-- top-level `output_text`, then top-level `text`;
-- iterable top-level `output` entries, collecting `content` and `text` while excluding entries classified as `reasoning`;
-- OpenAI-style `choices`, including `message.content` and direct `text` values;
-- newline joining for multiple recovered text fragments;
-- `strip()` before return.
+1. return non-empty `payload.get("output_text").strip()` when the value is a string;
+2. otherwise try top-level `text` with the same non-empty string rule;
+3. iterate `output` (falsey/missing becomes empty), skip non-mappings and entries whose `type == "reasoning"`, and collect readable `content` and `text` fragments;
+4. iterate `choices`; for a mapping with mapping-like `message`, read only `message.content`, otherwise accept direct string `choice.text`;
+5. inspect exactly two still-unresolved recursive fallback keys and recursively parse mapping values;
+6. newline-join retained fragments and strip the result.
 
-After extraction, `_request_api` calls `_clean_think_blocks`, then `_parse_result`, logs the resulting text signature, and returns the cleaned value to `enhance_prompt`. Missing keys and alternate shapes enter the extraction fallback logic. The exact final value for every malformed-but-nonraising mapping remains Unknown.
+A truthy non-iterable `output`/`choices`, or an operation failure while reading, comparing, iterating, joining, or stripping, propagates an exception. If no fragment is recovered, the normal nonraising result is `""`. The internal `read_content` helper and the two recursive key identities remain Unknown.
+
+### Text cleanup and result parsing
+
+The postprocessing helpers resolve to these static boundaries:
+
+| Helper                | Wrapper                      | Implementation                            |
+| --------------------- | ---------------------------- | ----------------------------------------- |
+| `_clean_think_blocks` | `FUN_180013f00`, 505 bytes   | `FUN_180014100`, 4,187 bytes              |
+| `_repair_mojibake`    | `FUN_180015160`, 3,169 bytes | wrapper logic plus three generator bodies |
+| `_strip_code_fence`   | `FUN_18001c1d0`, 1,603 bytes | wrapper logic                             |
+| `_parse_result`       | `FUN_18001c820`, 505 bytes   | `FUN_18001ca20`, 3,602 bytes              |
+
+`_clean_think_blocks` converts falsey input to `""`, then applies case-insensitive/DOTALL cleanup. Directly observed regular expressions are `<think\\b[^>]*>.*?</think>`, `^.*?</think>\\s*` (at most one leading stray-closing-tag region), fenced `thinking` and `thought` blocks, and `<思考>.*?</思考>`. The body also performs two retained literal `replace` calls whose argument tuples have not yet been decoded, so this is a lower bound on the replacement set.
+
+`_strip_code_fence` converts input to text and strips outer whitespace. It removes a fence only when the entire value matches the case-insensitive expression ` ```(?:json|text|markdown)?\\s*([\\s\\S]*?)\\s*``` `, then returns capture group 1 after `strip()`. Otherwise it returns the already-stripped original text; embedded or partial fences are not removed by this helper.
+
+`_repair_mojibake` converts falsey input to `""`. A retained marker/scoring predicate decides whether repair is worth attempting. When selected, it performs the equivalent codec round trip `text.encode("latin-1").decode("utf-8")`. It computes retained scores for original and candidate text and returns the candidate only when the candidate score compares greater; otherwise it preserves the original. Matching codec failures return the original, while unrelated exceptions propagate. The exact marker sets and score terms live in unresolved initialized tuples/generator constants and remain Unknown.
+
+`_parse_result` applies `_strip_code_fence`, then `_repair_mojibake`. A falsey result raises:
+
+```text
+模型返回为空，可能只生成了思考内容但没有最终提示词。请提高最大生成token后重试。
+```
+
+It then attempts `json.loads(cleaned_text)`. On `json.JSONDecodeError`, it searches for the first `{` and last `}` and, when they form a non-empty range, retries `json.loads()` on that substring. A second `JSONDecodeError` is treated as a non-JSON result rather than propagated. For a decoded mapping, it reads `rewritten_prompt`, converts it to text, strips it, and uses it only when non-empty; otherwise it falls back to the cleaned string. Non-JSON text is therefore a valid final result.
+
+The proven API postprocessing order is:
+
+```text
+response.json()
+→ _extract_response_text
+→ _clean_think_blocks
+→ _parse_result
+   → _strip_code_fence
+   → _repair_mojibake
+→ _text_signature (logging only)
+→ return
+```
 
 `_call_chat_completion` separately inspects a callable signature and keyword parameter dictionary before invoking a chat-completion callable. Its relationship to the current `requests.post` branch is not proven by a direct call edge in `_request_api`, so it is retained as a related helper rather than claimed as the active transport.
 
@@ -469,8 +508,9 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 
 The following remain intentionally unresolved:
 
-- Exact exception-class identities caught during API-key import, JSON decoding, and related provider fallbacks.
+- Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
 - The exact endpoint suffix selected for every `/v1` and `api.deepseek.com` URL combination where decompiler variable reuse obscures a concatenation operand.
+- The two recursive response-fallback keys, `read_content`'s complete accepted shape set, two literal think-block replacements, and the mojibake marker/score tables retained in initialized globals.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Remaining fallback multimodal handler constructor details and template adaptation edge cases.
