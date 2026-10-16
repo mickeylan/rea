@@ -396,17 +396,54 @@ response.json()
 
 ### Entry and configuration
 
-The `_request_local` wrapper resolves to `FUN_180021e70`, range `0x180021e70-0x1800223b4`, 1,349 bytes. It exposes one positional input plus observed keyword-only configuration names:
+The `_request_local` wrapper resolves to `FUN_180021e70`, range `0x180021e70-0x1800223b4`, 1,349 bytes, and dispatches to `FUN_180022710`, a 5,596-byte local-request body. The caller supplies eight named values in total: `user_prompt`, `system_prompt`, `model`, `mmproj`, `max_output_tokens`, `context_length`, `seed`, and `image_base64_list`; the retained wrapper evidence also identifies the corresponding keyword-parser names. Exact omission/default behavior inside this private helper remains bounded by the caller, which supplies every value.
 
-- `model`
-- `user_prompt`
-- `system_prompt`
-- `image_base64_list`
-- `mmproj`
-- `context_length`
-- `max_output_tokens`
+`_local_config` resolves to `FUN_1800216f0` (1,919 bytes), requires exactly `model`, `mmproj`, and `context_length`, and returns this reconstructed dictionary:
 
-It dispatches to `FUN_180022710`, a 5,596-byte local-request body. `_local_config` resolves to `FUN_1800216f0` (1,919 bytes), accepts exactly three values corresponding to the retained observations `model`, `mmproj`, and `context_length`, and returns a newly constructed dictionary. Its body coerces the context value with `PyNumber_Long`, applies a retained lower-bound comparison, and inserts both fixed and derived settings. The exact lower bound and dictionary-key mapping remain unresolved global objects.
+```python
+{
+    "family": _detect_model_family(model),
+    "model": model,
+    "mmproj": str(mmproj) if mmproj else "无",
+    "think": False,
+    "reasoning_effort": "xhigh",
+    "n_ctx": max(int(context_length or DEFAULT_CONTEXT_LENGTH), 1024),
+    "n_gpu_layers": -1,
+}
+```
+
+The minimum context is exactly `1024`; falsey context selects `DEFAULT_CONTEXT_LENGTH = 8192`. `n_gpu_layers` is the signed Windows value of initialized `0xffffffff`, hence `-1`. Conversion, comparison, detection, or dictionary failures propagate as Python exceptions.
+
+### Local chat request
+
+The local body loads `TEQwenImage21LocalStorage.load(_local_config(...))` and builds `messages` beginning with:
+
+```python
+{"role": "system", "content": system_prompt}
+```
+
+With no images, the user message is `{"role": "user", "content": user_prompt}`. With images, `content` becomes a list whose first element is `{"type": "text", "text": user_prompt}` and whose remaining elements come from the eight-image generator. The generator's exact image mapping remains unresolved, so the report does not assume that its schema is identical to the API transport's `input_image` representation.
+
+The request parameter dictionary is exact:
+
+```python
+{
+    "max_tokens": max(int(max_output_tokens or DEFAULT_MAX_OUTPUT_TOKENS), 256),
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 20,
+    "repeat_penalty": 1.0,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "seed": _normalize_seed(seed),
+    "stream": False,
+    "stop": ["</s>"],
+}
+```
+
+Before inference it calls `_reset_llm_state(stored_model.llm)`, then invokes `_call_chat_completion(stored_model.llm, messages=messages, params=params)`. The helper's signature-inspection path filters or adapts parameters according to the selected callable's accepted names/`**kwargs` support.
+
+The result must provide `choices[0].message.content` through mapping/item access. Missing or incompatible structure is translated into `本地模型返回格式异常：<response>`. The content is converted to text, passed through `_clean_think_blocks` and `_parse_result`, and must finish as a string or `None`; helper failures propagate.
 
 A retained-session xref pass (one import and one completed Ghidra analysis for all queries) linked the configuration observations more precisely:
 
@@ -427,7 +464,9 @@ Several duplicate defined strings (`prompt`, `image`, `temperature`) had no dire
 - `TE Qwen Image 2.1 local model unloading loaded=%s`
 - `TE Qwen Image 2.1 local model unloaded`
 
-The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. The retained storage value is constructed with the exact named fields `llm`, `settings`, and `chat_handler`. Reuse occurs when an existing storage object has a non-`None` `model` whose `settings` compare equal to the newly constructed settings dictionary; that path logs `TE Qwen Image 2.1 local model reusing model=%s` and returns the existing `model`. A mismatch proceeds to a new load and replaces the storage state.
+The load body performs dictionary construction/copy, attribute reads/writes, object calls, comparisons, integer conversion, and exception preservation. The class-level singleton `TEQwenImage21LocalStorage.model` is initialized to `None`. A populated entry is a `TEQwenImage21LocalModel` constructed with the exact named fields `llm`, `settings`, and `chat_handler`; it is not a raw three-element tuple.
+
+Reuse occurs only when `storage.model is not None` and `storage.model.settings == new_settings`. That path logs `TE Qwen Image 2.1 local model reusing model=%s` and returns the existing object. A mismatch logs loading and calls `storage.unload()` before validating or constructing the replacement. Replacement is therefore destructive-first: if later path validation, shard validation, handler creation, or `Llama` construction fails, the old cached model is not preserved.
 
 The settings dictionary passed into `llama_cpp.Llama` is now reconstructed as:
 
@@ -443,7 +482,9 @@ if _llama_argument_supported("ctx_checkpoints"):
     settings["ctx_checkpoints"] = 0
 ```
 
-The numeric constants come from the Cython constant initializer: `n_gpu_layers` uses `PyLong_FromLong(0xFFFFFFFF)`, which is signed `-1` on the Windows ABI, while `ctx_checkpoints` uses the initialized integer zero.
+The numeric constants come from the Cython constant initializer: `n_gpu_layers` uses `PyLong_FromLong(0xFFFFFFFF)`, which is signed `-1` on the Windows ABI, while `ctx_checkpoints` uses the initialized integer zero. This equality-tested dictionary is the actual loader cache identity: resolved model path, handler value/object, context size, GPU layers, verbosity, and optional checkpoint setting participate. Prompt text, output-token limit, and seed do not.
+
+Separately, `enhance_prompt` computes a logged `_settings_signature` from fifteen values: task mode, output language, enhancement method, API base URL/model, the two official PE choices, local model, projector, token/context limits, seed, auto-unload, thinking flag, and a derived eight-image signature. This digest is telemetry (`settings_sha256`), not the local model cache key.
 
 `resolved_model_path` is also resolved: it is `os.path.join(folder_paths.models_dir, "LLM", settings["model"])`. The loader requires `os.path.isfile(resolved_model_path)`, raises `找不到模型文件：<path>` when absent, and calls `_validate_gguf_shards(resolved_model_path, file_label="主模型")` before construction. A nonempty `mmproj` value other than `无` is resolved with the same `models_dir/LLM` prefix, checked with `isfile`, and validated with `file_label="mmproj"`; otherwise the effective projector path remains `None`.
 
@@ -480,6 +521,12 @@ The family strings and return values above are direct static observations. Handl
 - The fallback Qwen 3 VL projector route requires `Qwen3VLChatHandler`; missing support raises `当前 llama-cpp-python 不支持 Qwen3VLChatHandler，请更新 llama-cpp-python。` and delegates construction through `_create_multimodal_handler`.
 
 Branches without a projector retain `None` unless a post-construction Qwen 3.8 text handler is installed. Some fallback multimodal constructor details remain unresolved.
+
+### Automatic unload and exception precedence
+
+Auto-unload is route-specific. The API route does not touch local or official storage. After successful local generation, a truthy `生成后自动卸载模型` calls `TEQwenImage21LocalStorage.unload()`; the official-PE route calls its own storage class. Unload happens before completion logging and before constructing the public one-element return tuple.
+
+The same cleanup is attempted on local/official request failures while preserving the active exception. If unload succeeds, the original request exception is restored. If unload itself raises, that cleanup failure supersedes the saved request exception. Likewise, a successful generation followed by unload failure does not return success. Successful unload return values are ignored. The standalone unload body's internal close/GC ordering remains Unknown.
 
 ### GGUF shard validation
 
