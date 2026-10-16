@@ -730,6 +730,8 @@ copying license secrets into logs, or killing unrelated Hopper processes.
 
 ## Ghidra
 
+Windows users who want an end-to-end walkthrough can start with [Windows REA installation](rea-windows-installation.md), continue with [Windows Ghidra setup](rea-windows-ghidra-setup.md), and use the [Windows troubleshooting handbook](rea-windows-troubleshooting.md) for error-specific diagnosis.
+
 REA connects to an existing Ghidra installation on Linux x64/arm64, macOS x64/arm64,
 or experimental Windows x64 P0.
 It accepts Ghidra 12.1.x and the 64-bit full JDK declared by that installation's
