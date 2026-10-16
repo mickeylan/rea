@@ -280,7 +280,17 @@ This proves the node-value-first, `config.ini` fallback behavior. It does not ex
 - `/v1/chat/completions`
 - `/chat/completions`
 
-It also tests `/v1` and the host marker `api.deepseek.com`, then appends a responses endpoint suffix. Static control flow establishes that the output targets the Responses endpoint family, while preserving the listed already-complete endpoint forms. The exact suffix selected for every `/v1`/DeepSeek combination remains derived because decompiler variable reuse obscures two concatenation operands.
+After preserving those already-complete endpoint forms, the exact normalization is:
+
+```python
+if base.endswith("/v1"):
+    return base + "/responses"
+if "api.deepseek.com" in base:
+    return base + "/responses"
+return base + "/v1/responses"
+```
+
+Consequently `https://api.deepseek.com` becomes `https://api.deepseek.com/responses`, while an ordinary provider root such as `https://example.test` becomes `https://example.test/v1/responses`. The host test is a case-sensitive substring check on the normalized URL, not parsed hostname equality.
 
 ### Request payload and image representation
 
@@ -694,7 +704,6 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 The following remain intentionally unresolved:
 
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
-- The exact endpoint suffix selected for every `/v1` and `api.deepseek.com` URL combination where decompiler variable reuse obscures a concatenation operand.
 - The remaining mojibake scoring terms and weights.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
