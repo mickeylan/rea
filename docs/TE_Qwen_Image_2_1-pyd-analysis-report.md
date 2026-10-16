@@ -670,7 +670,21 @@ The family strings and return values above are direct static observations. Handl
 - Qwen 3.8 with a projector uses `_create_qwen38_vision_handler(projector_path, chat_template=template, enable_thinking=think, preserve_thinking=False, reasoning_effort=reasoning_effort)` and assigns the result to `llm.chat_handler`.
 - The fallback Qwen 3 VL projector route requires `Qwen3VLChatHandler`; missing support raises `当前 llama-cpp-python 不支持 Qwen3VLChatHandler，请更新 llama-cpp-python。` and delegates construction through `_create_multimodal_handler`.
 
-Branches without a projector retain `None` unless a post-construction Qwen 3.8 text handler is installed. Some fallback multimodal constructor details remain unresolved.
+`_create_multimodal_handler` is implemented inline by `FUN_18000a010` (1,792 bytes) and requires exactly `handler_class` and string `mmproj_path`. It first calls:
+
+```python
+handler_class(mmproj_path=mmproj_path)
+```
+
+If construction succeeds, that result is returned. If construction raises the one retained compatibility exception class, the helper lowercases the exception text. Only when the message contains `mmproj_path` or `clip_model_path` does it retry:
+
+```python
+handler_class(clip_model_path=mmproj_path)
+```
+
+A nonmatching exception class or message restores and propagates the original exception; a failed fallback construction propagates the fallback error. This is keyword-name compatibility adaptation, not a change to the selected path. The retained compatibility exception class identity remains Unknown.
+
+Branches without a projector retain `None` unless a post-construction Qwen 3.8 text handler is installed.
 
 ### Automatic unload and exception precedence
 
@@ -708,7 +722,7 @@ The following remain intentionally unresolved:
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
-- Remaining fallback multimodal handler constructor details and template adaptation edge cases.
+- Remaining Qwen template-adaptation edge cases.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
 
 ## Reproduction commands
