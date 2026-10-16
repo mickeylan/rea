@@ -363,7 +363,16 @@ The postprocessing helpers resolve to these static boundaries:
 | `_strip_code_fence`   | `FUN_18001c1d0`, 1,603 bytes | wrapper logic                             |
 | `_parse_result`       | `FUN_18001c820`, 505 bytes   | `FUN_18001ca20`, 3,602 bytes              |
 
-`_clean_think_blocks` converts falsey input to `""`, then applies case-insensitive/DOTALL cleanup. Directly observed regular expressions are `<think\\b[^>]*>.*?</think>`, `^.*?</think>\\s*` (at most one leading stray-closing-tag region), fenced `thinking` and `thought` blocks, and `<思考>.*?</思考>`. The body also performs two retained literal `replace` calls whose argument tuples have not yet been decoded, so this is a lower bound on the replacement set.
+`_clean_think_blocks` converts falsey input to `""`, then applies this ordered cleanup:
+
+1. remove `<think\\b[^>]*>.*?</think>` with `IGNORECASE | DOTALL`;
+2. if a case-insensitive `</think>` remains, remove at most one leading `^.*?</think>\\s*` region with `IGNORECASE | DOTALL`;
+3. perform two retained literal `replace` calls whose argument tuples are not yet decoded;
+4. remove fenced ` ```thinking\\b.*?``` ` and ` ```thought\\b.*?``` ` regions with `IGNORECASE | DOTALL`;
+5. remove `<思考>.*?</思考>` and `【思考】.*?【/思考】` with `DOTALL`;
+6. strip outer whitespace.
+
+This establishes the exact regular-expression set and order while leaving only the two ordinary `replace(old, new)` tuple values Unknown.
 
 `_strip_code_fence` converts input to text and strips outer whitespace. It removes a fence only when the entire value matches the case-insensitive expression ` ```(?:json|text|markdown)?\\s*([\\s\\S]*?)\\s*``` `, then returns capture group 1 after `strip()`. Otherwise it returns the already-stripped original text; embedded or partial fences are not removed by this helper.
 
@@ -645,7 +654,7 @@ Branches without a projector retain `None` unless a post-construction Qwen 3.8 t
 
 Auto-unload is route-specific. The API route does not touch local or official storage. After successful local generation, a truthy `生成后自动卸载模型` calls `TEQwenImage21LocalStorage.unload()`; the official-PE route calls its own storage class. Unload happens before completion logging and before constructing the public one-element return tuple.
 
-The same cleanup is attempted on local/official request failures while preserving the active exception. If unload succeeds, the original request exception is restored. If unload itself raises, that cleanup failure supersedes the saved request exception. Likewise, a successful generation followed by unload failure does not return success. Successful unload return values are ignored. The standalone unload body's internal close/GC ordering remains Unknown.
+The same cleanup is attempted on local/official request failures while preserving the active exception. If unload succeeds, the original request exception is restored. If unload itself raises, that cleanup failure supersedes the saved request exception. Likewise, a successful generation followed by unload failure does not return success. Successful unload return values are ignored. The official storage cleanup sequence is documented above; only the local llama.cpp storage's internal close/GC ordering remains Unknown.
 
 ### GGUF shard validation
 
@@ -676,7 +685,7 @@ The following remain intentionally unresolved:
 
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
 - The exact endpoint suffix selected for every `/v1` and `api.deepseek.com` URL combination where decompiler variable reuse obscures a concatenation operand.
-- The two recursive response-fallback keys, `read_content`'s complete accepted shape set, two literal think-block replacements, and the mojibake marker/score tables retained in initialized globals.
+- The two recursive response-fallback keys, `read_content`'s complete accepted shape set, the two ordinary literal replacements inside `_clean_think_blocks`, and the mojibake marker/score tables retained in initialized globals.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Remaining fallback multimodal handler constructor details and template adaptation edge cases.
