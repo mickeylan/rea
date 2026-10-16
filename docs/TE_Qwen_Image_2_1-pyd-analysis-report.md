@@ -7,7 +7,7 @@
 
 ## Scope and confidence
 
-This report records static observations from the immutable target and conservative deductions from those observations. It does not claim recovery of the original source, exact Python signatures, default values, or runtime behavior. API-provider behavior is intentionally deferred.
+This report records static observations from the immutable target and conservative deductions from those observations. It does not claim recovery of the original source, source annotations, or runtime behavior. API-provider behavior is described only where the static helper bodies establish it; no network request was sent.
 
 - **Observed**: returned directly by Ghidra/REA inventories, references, or function dossiers.
 - **Derived**: supported by multiple static observations, but not runtime-verified.
@@ -244,6 +244,115 @@ A retained-session analysis of the helper boundaries established:
 - `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one argument, `seed_value`, positionally or by keyword. The Cython runtime type check requires a Python integer; an exact `int` is retained, while an integer subtype is normalized through `PyNumber_Long`. At `0x1800045c4-0x1800045d4`, the converted value is compared with initialized integer global `DAT_180051bd0 = 0` using rich-comparison opcode `5` (`Py_GE`). A true comparison returns the normalized integer; a false comparison returns Python `None`. Thus the behavioral contract is `seed if seed >= 0 else None`: zero and positive values are retained, negative values select `None`. Conversion failures are matched against two retained exception-class globals; matching exceptions are cleared and also return `None`, while nonmatching exceptions, comparison failures, and truth-test failures propagate through native `NULL`. The two caught exception-class identities remain Unknown; treating them as `TypeError`/`ValueError` would be a source-level inference rather than a direct observation.
 - `enable_thinking` at the queried reference belongs to nested `_create_qwen38_text_handler.qwen38_formatter`, `FUN_18000cdc0` (1,113 bytes). Its observed call inputs include `reasoning_effort`, `enable_thinking`, `preserve_thinking`, and `formatter`. The body constructs a keyword dictionary and invokes the retained formatter callable. This is Qwen 3.8 formatting behavior, not proof of the top-level input default.
 
+## API route
+
+### Function boundaries and call shape
+
+The module method-definition records establish these wrapper entry points:
+
+| Helper                   | Wrapper         | Range / size                           | Implementation body                        |
+| ------------------------ | --------------- | -------------------------------------- | ------------------------------------------ |
+| `_resolve_api_key`       | `FUN_180019590` | `0x180019590-0x180019e2a`, 2,203 bytes | Logic is retained in this wrapper dossier. |
+| `_resolve_api_url`       | `FUN_180019e30` | `0x180019e30-0x18001a3f7`, 1,480 bytes | Logic is retained in this wrapper dossier. |
+| `_extract_response_text` | `FUN_18001a400` | `0x18001a400-0x18001a5f8`, 505 bytes   | `FUN_18001b010`, 4,544 bytes.              |
+| `_call_chat_completion`  | `FUN_180012e10` | `0x180012e10-0x18001391c`, 2,829 bytes | `FUN_180013920`, 1,498 bytes.              |
+| `_build_api_input`       | `FUN_18001d840` | `0x18001d840-0x18001de30`, 1,521 bytes | `FUN_18001de40`, 747-byte generator body.  |
+| `_request_api`           | `FUN_18001e130` | `0x18001e130-0x18001e567`, 1,080 bytes | `FUN_18001e570`, 5,704 bytes.              |
+
+`enhance_prompt` resolves the supplied key through `_resolve_api_key(api_key)`, then calls `_request_api` with six keyword arguments in this order: `user_prompt`, `system_prompt`, `api_key`, `api_base_url`, `model`, and `image_base64_list`. The API user text is prefixed with `用户需求：\n`; success enters the shared generated-result cleanup and `(enhanced_prompt,)` return path.
+
+### API key selection
+
+`_resolve_api_key` requires one string argument. It constructs `ConfigManager(PLUGIN_DIR)`, calls `sanitize_api_key` on the supplied node value, and uses the sanitized value when truthy. If it is empty, it calls `load_api_key`, sanitizes that result, and uses it when truthy. If both sources remain empty, it raises the retained message:
+
+```text
+请在节点中填写 API Key，或在 config.ini 中配置 API Key
+```
+
+This proves the node-value-first, `config.ini` fallback behavior. It does not expose or infer any actual credential value.
+
+### URL normalization
+
+`_resolve_api_url` converts the supplied value to text, applies `strip()`, then `rstrip("/")`. An empty result raises `未配置有效的 API URL`. The helper recognizes already-suffixed URLs ending in:
+
+- `/v1/responses`
+- `/responses`
+- `/v1/chat/completions`
+- `/chat/completions`
+
+It also tests `/v1` and the host marker `api.deepseek.com`, then appends a responses endpoint suffix. Static control flow establishes that the output targets the Responses endpoint family, while preserving the listed already-complete endpoint forms. The exact suffix selected for every `/v1`/DeepSeek combination remains derived because decompiler variable reuse obscures two concatenation operands.
+
+### Request payload and image representation
+
+`_build_api_input(user_prompt, image_base64_list)` constructs the equivalent nested value:
+
+```python
+[
+    {
+        "role": "user",
+        "content": [
+            {"type": "input_text", "text": user_prompt},
+            *(
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/jpeg;base64," + image,
+                }
+                for image in image_base64_list
+            ),
+        ],
+    }
+]
+```
+
+`_request_api` strips the selected model and falls back to `DEFAULT_API_MODEL` when empty. It constructs this observed JSON dictionary:
+
+```python
+{
+    "model": resolved_model,
+    "instructions": system_prompt,
+    "input": _build_api_input(user_prompt, image_base64_list),
+    "temperature": 0.6,
+}
+```
+
+This `temperature` belongs to the API transport payload. It is not an `INPUT_TYPES` field.
+
+### HTTP transport and errors
+
+The helper imports the initialized `requests` object, resolves `post`, and calls the normalized URL with:
+
+```python
+headers = {
+    "Authorization": "Bearer " + api_key,
+    "Content-Type": "application/json",
+}
+requests.post(url, headers=headers, json=payload, timeout=300)
+```
+
+No request was sent during this analysis. The behavior above comes from static dictionary construction and vectorcall keyword metadata.
+
+The response `status_code` is compared with integer `400`. A status at or above that boundary reads and strips `response.text`, then raises a message of the form:
+
+```text
+API 调用失败 HTTP <status>: <text>
+```
+
+For a status below 400, the helper calls `response.json()`. If JSON decoding matches either of two retained exception-class globals, it reads and strips `response.text` and raises `API 返回格式异常：<text>`. Other exceptions propagate. The two caught exception identities remain Unknown.
+
+### Response extraction and final cleanup
+
+`_extract_response_text` supports several statically observed response shapes rather than assuming one provider schema:
+
+- top-level `output_text`, then top-level `text`;
+- iterable top-level `output` entries, collecting `content` and `text` while excluding entries classified as `reasoning`;
+- OpenAI-style `choices`, including `message.content` and direct `text` values;
+- newline joining for multiple recovered text fragments;
+- `strip()` before return.
+
+After extraction, `_request_api` calls `_clean_think_blocks`, then `_parse_result`, logs the resulting text signature, and returns the cleaned value to `enhance_prompt`. Missing keys and alternate shapes enter the extraction fallback logic. The exact final value for every malformed-but-nonraising mapping remains Unknown.
+
+`_call_chat_completion` separately inspects a callable signature and keyword parameter dictionary before invoking a chat-completion callable. Its relationship to the current `requests.post` branch is not proven by a direct call edge in `_request_api`, so it is retained as a related helper rather than claimed as the active transport.
+
 ## Local model route
 
 ### Entry and configuration
@@ -360,7 +469,8 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 
 The following remain intentionally unresolved:
 
-- API request construction, authentication, and provider-specific response handling.
+- Exact exception-class identities caught during API-key import, JSON decoding, and related provider fallbacks.
+- The exact endpoint suffix selected for every `/v1` and `api.deepseek.com` URL combination where decompiler variable reuse obscures a concatenation operand.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Remaining fallback multimodal handler constructor details and template adaptation edge cases.
