@@ -396,7 +396,9 @@ The ordinary replacements come from constant tuples `("<think>", "")` and `("</t
 
 `_strip_code_fence` converts input to text and strips outer whitespace. It removes a fence only when the entire value matches the case-insensitive expression ` ```(?:json|text|markdown)?\\s*([\\s\\S]*?)\\s*``` `, then returns capture group 1 after `strip()`. Otherwise it returns the already-stripped original text; embedded or partial fences are not removed by this helper.
 
-`_repair_mojibake` converts falsey input to `""`. Its initialized mojibake marker tuple is exactly `("Ã", "Â", "æ", "å", "ç", "è", "é", "ï")`; a retained marker/scoring predicate decides whether repair is worth attempting. When selected, it performs the equivalent codec round trip `text.encode("latin-1").decode("utf-8")`. It computes retained scores for original and candidate text and returns the candidate only when the candidate score compares greater; otherwise it preserves the original. Matching codec failures return the original, while unrelated exceptions propagate. The remaining score terms and weights are retained in generator bodies and remain Unknown.
+`_repair_mojibake` converts falsey input to `""`. Its initialized marker tuple is exactly `("Ã", "Â", "æ", "å", "ç", "è", "é", "ï")`, and generator `FUN_180015dd0` implements `any(marker in text for marker in markers)`. If no marker occurs, the original text is returned. Otherwise it attempts the equivalent codec round trip `text.encode("latin-1").decode("utf-8")`.
+
+Generators `FUN_180015fe0` and `FUN_180016200` compute the original and candidate scores identically: each counts characters whose code point is in the inclusive CJK Unified Ideographs range `U+4E00..U+9FFF`. There are no additional terms or weights. The candidate is selected only when `candidate_cjk_count > original_cjk_count`; equality preserves the original. Matching codec failures return the original, while unrelated exceptions propagate.
 
 `_parse_result` applies `_strip_code_fence`, then `_repair_mojibake`. A falsey result raises:
 
@@ -704,7 +706,6 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 The following remain intentionally unresolved:
 
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
-- The remaining mojibake scoring terms and weights.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Remaining fallback multimodal handler constructor details and template adaptation edge cases.
