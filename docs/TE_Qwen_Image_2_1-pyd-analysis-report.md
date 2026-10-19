@@ -259,7 +259,7 @@ A retained-session analysis of the helper boundaries established:
 - `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one argument, `seed_value`, positionally or by keyword. The Cython runtime type check requires a Python integer; an exact `int` is retained, while an integer subtype is normalized through `PyNumber_Long`. At `0x1800045c4-0x1800045d4`, the converted value is compared with initialized integer global `DAT_180051bd0 = 0` using rich-comparison opcode `5` (`Py_GE`). A true comparison returns the normalized integer; a false comparison returns Python `None`. Thus the behavioral contract is `seed if seed >= 0 else None`: zero and positive values are retained, negative values select `None`. Conversion failures are matched against initialized `TypeError` and `ValueError`; either is cleared and returns `None`, while nonmatching exceptions, comparison failures, and truth-test failures propagate through native `NULL`.
 - `enable_thinking` at the queried reference belongs to nested `_create_qwen38_text_handler.qwen38_formatter`, `FUN_18000cdc0` (1,113 bytes). Its observed call inputs include `reasoning_effort`, `enable_thinking`, `preserve_thinking`, and `formatter`. The body constructs a keyword dictionary and invokes the retained formatter callable. This is Qwen 3.8 formatting behavior, not proof of the top-level input default.
 
-The builtin-exception initializer `FUN_18002f290` resolves the adjacent exception-name fields used by these helpers. Cross-references establish `DAT_180051d30 = TypeError`, `DAT_180051d18 = ValueError`, `DAT_180051d20 = UnicodeEncodeError`, and `DAT_180051cb8 = UnicodeDecodeError`; these identities are used below instead of the earlier unnamed-slot descriptions.
+The builtin-exception initializer `FUN_18002f290` resolves the adjacent exception-name fields used by these helpers. Cross-references establish `DAT_180051d30 = TypeError`, `DAT_180051d18 = ValueError`, `DAT_180051d20 = UnicodeEncodeError`, `DAT_180051cb8 = UnicodeDecodeError`, `DAT_180051d38 = ImportError`, `DAT_180051d08 = KeyError`, and `DAT_180051cc8 = IndexError`; these identities are used below instead of the earlier unnamed-slot descriptions.
 
 ## API route
 
@@ -280,7 +280,7 @@ The module method-definition records establish these wrapper entry points:
 
 ### API key selection
 
-`_resolve_api_key` requires one string argument. It constructs `ConfigManager(PLUGIN_DIR)`, calls `sanitize_api_key` on the supplied node value, and uses the sanitized value when truthy. If it is empty, it calls `load_api_key`, sanitizes that result, and uses it when truthy. If both sources remain empty, it raises the retained message:
+`_resolve_api_key` requires one string argument. It first attempts a package-relative import of `ConfigManager` from `config_manager`; only `ImportError` triggers an absolute `config_manager` fallback import, while other import failures propagate. It constructs `ConfigManager(PLUGIN_DIR)`, calls `sanitize_api_key` on the supplied node value, and uses the sanitized value when truthy. If it is empty, it calls `load_api_key`, sanitizes that result, and uses it when truthy. If both sources remain empty, it raises the retained message:
 
 ```text
 请在节点中填写 API Key，或在 config.ini 中配置 API Key
@@ -610,7 +610,7 @@ The request parameter dictionary is exact:
 
 Before inference it calls `_reset_llm_state(stored_model.llm)`, then invokes `_call_chat_completion(stored_model.llm, messages=messages, params=params)`. The helper's signature-inspection path filters or adapts parameters according to the selected callable's accepted names/`**kwargs` support.
 
-The result must provide `choices[0].message.content` through mapping/item access. Missing or incompatible structure is translated into `本地模型返回格式异常：<response>`. The content is converted to text, passed through `_clean_think_blocks` and `_parse_result`, and must finish as a string or `None`; helper failures propagate.
+The result must provide `choices[0].message.content` through mapping/item access. `KeyError`, `IndexError`, or `TypeError` during that traversal is translated into `本地模型返回格式异常：<response>`; other exceptions propagate. The content is converted to text, passed through `_clean_think_blocks` and `_parse_result`, and must finish as a string or `None`; helper failures propagate.
 
 A retained-session xref pass (one import and one completed Ghidra analysis for all queries) linked the configuration observations more precisely:
 
@@ -796,7 +796,6 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 
 The following remain intentionally unresolved:
 
-- The remaining exception identities in the API-key import and malformed local-response fallback paths.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
