@@ -162,20 +162,136 @@ The video node therefore preserves the same required `model`, `images`, `scale`,
 
 ### Located wrapper/body boundaries
 
-| Method                             | Wrapper                    | Body / current observation           |
-| ---------------------------------- | -------------------------- | ------------------------------------ |
-| `TESpeedVOSR2Loader.INPUT_TYPES`   | `0x180001000`, 630 bytes   | `FUN_180001280`, 1,968 bytes         |
-| `TESpeedVOSR2Settings.INPUT_TYPES` | `0x180002370`, 630 bytes   | `FUN_1800025f0`, 4,945 bytes         |
-| `_VOSR2Base.INPUT_TYPES`           | `0x180003dd0`, 1,639 bytes | body relationship not yet separated  |
-| `_VOSR2Base.upscale`               | `0x180004440`, 1,841 bytes | implementation target not yet proven |
-| `TESpeedVOSR2Video.INPUT_TYPES`    | `0x180004b90`, 630 bytes   | `FUN_180004e10`, 1,960 bytes         |
-| `TESpeedVOSR2Video.upscale`        | `0x1800055c0`, 2,009 bytes | `FUN_180005de0`, 2,625 bytes         |
+| Method                             | Wrapper                    | Body / current observation   |
+| ---------------------------------- | -------------------------- | ---------------------------- |
+| `TESpeedVOSR2Loader.INPUT_TYPES`   | `0x180001000`, 630 bytes   | `FUN_180001280`, 1,968 bytes |
+| `TESpeedVOSR2Settings.INPUT_TYPES` | `0x180002370`, 630 bytes   | `FUN_1800025f0`, 4,945 bytes |
+| `_VOSR2Base.INPUT_TYPES`           | `0x180003dd0`, 1,639 bytes | implementation is inline     |
+| `_VOSR2Base.upscale`               | `0x180004440`, 1,841 bytes | implementation is inline     |
+| `TESpeedVOSR2Video.INPUT_TYPES`    | `0x180004b90`, 630 bytes   | `FUN_180004e10`, 1,960 bytes |
+| `TESpeedVOSR2Video.upscale`        | `0x1800055c0`, 2,009 bytes | `FUN_180005de0`, 2,625 bytes |
 
-The wrappers expose ordinary Cython argument-count/type errors. They do not by themselves prove Python signatures or keyword-only status.
+### Public method calling conventions and returns
+
+The decoded wrapper parameter tables establish these Python call shapes:
+
+```python
+TESpeedVOSR2Loader.load(
+    self,
+    model_bundle,
+    precision,
+    memory_policy,
+    torch_compile=False,
+    vae_encode_amp=False,
+)
+
+TESpeedVOSR2Settings.make(self, **settings)
+
+_VOSR2Base.upscale(
+    self,
+    model,
+    images,
+    scale,
+    seed,
+    settings=None,
+)
+
+TESpeedVOSR2Video.upscale(
+    self,
+    model,
+    images,
+    scale,
+    seed,
+    settings=None,
+    frame_batch=0,
+    temporal_cache=False,
+    cache_threshold=0.003,
+    cache_refresh=4,
+)
+```
+
+Arguments may be populated positionally or by keyword according to the ordinary Cython parser; these parameters are not keyword-only. The first three non-`self` loader arguments and first four non-`self` upscale arguments are required. Unknown or duplicate keywords raise the generated `TypeError` path.
+
+`load` performs the equivalent observed sequence:
+
+1. `model = load_model(model_bundle, precision)`;
+2. assign `model.memory_policy = memory_policy`;
+3. normalize `vae_encode_amp` through Python truth testing and assign the resulting `bool` to `model.vae_encode_amp`;
+4. normalize `torch_compile` through Python truth testing;
+5. resolve `_bundle_path(model_bundle)`;
+6. invoke `model.set_torch_compile(normalized_torch_compile, resolved_bundle_path)`;
+7. return `(model,)`.
+
+`make` copies the collected keyword dictionary, constructs `VOSR2Settings(**settings)`, calls `.normalized()`, and returns `(normalized_settings,)`.
+
+The base image `upscale` treats a falsey `settings` value as absent and constructs `VOSR2Settings()` in that case. It then invokes:
+
+```python
+run_vosr2(model, images, scale, seed, effective_settings)
+```
+
+and returns `(result,)`.
+
+The video `upscale` similarly supplies default settings when needed. For a supplied settings object it copies `settings.__dict__`, applies its explicit video overrides, reconstructs `VOSR2Settings(**copied_values)`, and calls `.normalized()`. A positive `frame_batch` overrides the normalized setting; `0` selects `normalized.frame_batch`. Its `run_vosr2` keyword dictionary includes:
+
+```python
+{
+    "batch_override": effective_frame_batch,
+    "temporal_cache": normalized.temporal_cache,
+    "auto_expand_vae_tile": True,
+}
+```
+
+along with the common model/image/scale/seed/settings inputs. It returns `(result,)`. The exact remaining keyword set and override precedence are still being traced.
+
+Every helper failure propagates through the generated exception path and returns native `NULL`; none of these wrappers converts a failure into an empty image or `None` success value.
 
 ## Settings model
 
-`settings.pyd` exposes `settings.VOSR2Settings.normalized`. The settings inventory contains the same profile, tiling, cache, precision, and batching vocabulary listed above. Exact dataclass/constructor fields, normalization defaults, clamping behavior, and validation exceptions remain to be decoded.
+`settings.pyd` exposes `settings.VOSR2Settings.normalized`. The wrapper accepts only `self`; unexpected keywords and extra positional arguments use the ordinary generated `TypeError` paths.
+
+The body constructs and returns a new `VOSR2Settings` rather than mutating `self`. Its recovered normalization rules are:
+
+```python
+profile_aliases = {
+    "detail": "manual",
+    "balanced": "manual",
+    "throughput": "speed",
+}
+quality_profile = profile_aliases.get(self.quality_profile, self.quality_profile)
+if quality_profile not in ("manual", "speed"):
+    quality_profile = "manual"
+
+if self.tile_strategy not in ("auto", "full_frame", "tiled"):
+    tile_strategy = "auto"
+else:
+    tile_strategy = self.tile_strategy
+
+if self.memory_policy not in ("auto", "resident", "staged"):
+    memory_policy = "auto"
+else:
+    memory_policy = self.memory_policy
+
+tile_size = max(128, int(self.tile_size))
+tile_overlap = max(0, min(int(self.tile_overlap), tile_size - 1))
+vae_tile_size = max(0, int(self.vae_tile_size))
+if vae_tile_size:
+    vae_tile_overlap = max(
+        0,
+        min(int(self.vae_tile_overlap), max(1, vae_tile_size - 1)),
+    )
+else:
+    vae_tile_overlap = 0
+
+image_batch = max(1, int(self.image_batch))
+frame_batch = max(1, int(self.frame_batch))
+dino_batch = max(1, int(self.dino_batch))
+temporal_cache = bool(self.temporal_cache)
+cache_threshold = max(0.0, float(self.cache_threshold))
+cache_refresh = max(1, int(self.cache_refresh))
+```
+
+The body forwards `color_alignment` into the reconstructed settings object. It also forwards the normalized fields above through one 14-argument constructor call. Exact constructor-field ordering for the remaining boolean/configuration fields is still being mapped, but the value transformations shown above are structurally explicit.
 
 ## Model store surface
 
