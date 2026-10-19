@@ -705,7 +705,29 @@ Branches without a projector retain `None` unless a post-construction Qwen 3.8 t
 
 Auto-unload is route-specific. The API route does not touch local or official storage. After successful local generation, a truthy `生成后自动卸载模型` calls `TEQwenImage21LocalStorage.unload()`; the official-PE route calls its own storage class. Unload happens before completion logging and before constructing the public one-element return tuple.
 
-The same cleanup is attempted on local/official request failures while preserving the active exception. If unload succeeds, the original request exception is restored. If unload itself raises, that cleanup failure supersedes the saved request exception. Likewise, a successful generation followed by unload failure does not return success. Successful unload return values are ignored. The official storage cleanup sequence is documented above; only the local llama.cpp storage's internal close/GC ordering remains Unknown.
+The same cleanup is attempted on local/official request failures while preserving the active exception. If unload succeeds, the original request exception is restored. If unload itself raises, that cleanup failure supersedes the saved request exception. Likewise, a successful generation followed by unload failure does not return success. Successful unload return values are ignored.
+
+The local storage method-definition record resolves `unload` to wrapper `FUN_18000f7b0` (514 bytes) and body `FUN_18000f9c0` (1,524 bytes). Its exact order is:
+
+```python
+loaded = storage.model is not None
+logger.info("TE Qwen Image 2.1 local model unloading loaded=%s", loaded)
+
+if storage.model is not None:
+    close = getattr(storage.model.llm, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+
+storage.model = None
+gc.collect()
+mm.soft_empty_cache()
+logger.info("TE Qwen Image 2.1 local model unloaded")
+```
+
+The `close()` compatibility block suppresses subclasses of ordinary Python `Exception`; nonmatching failures propagate. Failures while clearing the cache, collecting garbage, emptying the device cache, or logging also propagate. Thus close failure alone does not prevent cache clearing, while later cleanup failure can still supersede an active generation exception.
 
 ### GGUF shard validation
 
