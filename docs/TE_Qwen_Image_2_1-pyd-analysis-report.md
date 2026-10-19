@@ -739,14 +739,34 @@ Observed shard pattern:
 ^(?P<prefix>.+)-(?P<index>\d{5})-of-(?P<total>\d{5})(?P<extension>\.gguf)$
 ```
 
-The body iterates Python collections, compares values, constructs lists and strings, converts numeric values, and can emit `Expected %s, got %U`. This supports the following derived checks:
+The body applies `os.fspath`, takes `os.path.basename`, and runs `_GGUF_SHARD_PATTERN.fullmatch`. A non-sharded filename is accepted immediately and returns `None`. For a shard name it converts `index` and `total` to integers and retains the extension.
 
-- recognize single-file versus numbered multipart GGUF names;
-- parse shard index and declared total;
-- collect and order expected shard paths;
-- reject a missing, mismatched, or inconsistent shard set.
+If `index != 1`, it reconstructs the required first-shard filename as:
 
-Exact exception classes and every error message remain unknown.
+```python
+f"{prefix}-00001-of-{total:05d}{extension}"
+```
+
+and raises this exact message:
+
+```text
+{file_label}选中了 GGUF 的第 {index} 个分片。请选择第一片：{first_shard_name}
+```
+
+For a selected first shard, it generates every expected name for indices `1..total`, joins each name to the selected file's directory, and classifies it as missing when `os.path.isfile(path)` is false or empty when `os.path.getsize(path) <= 0`. A complete nonempty set returns `None`. Otherwise it raises:
+
+```text
+{file_label} GGUF 分片不完整（共 {total} 片）。{details}
+```
+
+`details` contains the nonempty components below, joined with `；`; names inside each component are joined with `、`:
+
+```text
+缺少分片：{missing_names}
+空分片：{empty_names}
+```
+
+Filesystem, conversion, formatting, and iteration failures propagate. The two explicitly constructed validation-error class identities remain Unknown, but the admission rules, return value, and message text are statically recovered.
 
 ### Multimodal path
 
