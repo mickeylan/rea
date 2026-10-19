@@ -256,8 +256,10 @@ A retained-session analysis of the helper boundaries established:
   ```
 
   For the official-PE route it instead removes conflicting language rules, appends `QWEN_OFFICIAL_PE_POLICY`, and selects one exact JSON-output rule. The Chinese form requires all descriptive prose in `rewritten_prompt` to be Chinese while preserving user-visible text, proper nouns, and brand names; the English form imposes the equivalent English requirement. Both require a single-line JSON object and immediate termination after the closing `}`. This branch does not append the local/API pure-text mode policy.
-- `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one argument, `seed_value`, positionally or by keyword. The Cython runtime type check requires a Python integer; an exact `int` is retained, while an integer subtype is normalized through `PyNumber_Long`. At `0x1800045c4-0x1800045d4`, the converted value is compared with initialized integer global `DAT_180051bd0 = 0` using rich-comparison opcode `5` (`Py_GE`). A true comparison returns the normalized integer; a false comparison returns Python `None`. Thus the behavioral contract is `seed if seed >= 0 else None`: zero and positive values are retained, negative values select `None`. Conversion failures are matched against two retained exception-class globals; matching exceptions are cleared and also return `None`, while nonmatching exceptions, comparison failures, and truth-test failures propagate through native `NULL`. The two caught exception-class identities remain Unknown; treating them as `TypeError`/`ValueError` would be a source-level inference rather than a direct observation.
+- `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one argument, `seed_value`, positionally or by keyword. The Cython runtime type check requires a Python integer; an exact `int` is retained, while an integer subtype is normalized through `PyNumber_Long`. At `0x1800045c4-0x1800045d4`, the converted value is compared with initialized integer global `DAT_180051bd0 = 0` using rich-comparison opcode `5` (`Py_GE`). A true comparison returns the normalized integer; a false comparison returns Python `None`. Thus the behavioral contract is `seed if seed >= 0 else None`: zero and positive values are retained, negative values select `None`. Conversion failures are matched against initialized `TypeError` and `ValueError`; either is cleared and returns `None`, while nonmatching exceptions, comparison failures, and truth-test failures propagate through native `NULL`.
 - `enable_thinking` at the queried reference belongs to nested `_create_qwen38_text_handler.qwen38_formatter`, `FUN_18000cdc0` (1,113 bytes). Its observed call inputs include `reasoning_effort`, `enable_thinking`, `preserve_thinking`, and `formatter`. The body constructs a keyword dictionary and invokes the retained formatter callable. This is Qwen 3.8 formatting behavior, not proof of the top-level input default.
+
+The builtin-exception initializer `FUN_18002f290` resolves the adjacent exception-name fields used by these helpers. Cross-references establish `DAT_180051d30 = TypeError`, `DAT_180051d18 = ValueError`, `DAT_180051d20 = UnicodeEncodeError`, and `DAT_180051cb8 = UnicodeDecodeError`; these identities are used below instead of the earlier unnamed-slot descriptions.
 
 ## API route
 
@@ -362,7 +364,7 @@ The response `status_code` is compared with integer `400`. A status at or above 
 API 调用失败 HTTP <status>: <text>
 ```
 
-For a status below 400, the helper calls `response.json()`. If JSON decoding matches either of two retained exception-class globals, it reads and strips `response.text` and raises `API 返回格式异常：<text>`. Other exceptions propagate. The two caught exception identities remain Unknown.
+For a status below 400, the helper calls `response.json()`. If decoding raises `TypeError` or `ValueError`, it reads and strips `response.text` and raises `API 返回格式异常：<text>`. Other exceptions propagate. `_parse_result` separately catches the imported `json.JSONDecodeError` for its direct and brace-delimited parsing attempts.
 
 ### Exact response precedence
 
@@ -413,7 +415,7 @@ The ordinary replacements come from constant tuples `("<think>", "")` and `("</t
 
 `_repair_mojibake` converts falsey input to `""`. Its initialized marker tuple is exactly `("Ã", "Â", "æ", "å", "ç", "è", "é", "ï")`, and generator `FUN_180015dd0` implements `any(marker in text for marker in markers)`. If no marker occurs, the original text is returned. Otherwise it attempts the equivalent codec round trip `text.encode("latin-1").decode("utf-8")`.
 
-Generators `FUN_180015fe0` and `FUN_180016200` compute the original and candidate scores identically: each counts characters whose code point is in the inclusive CJK Unified Ideographs range `U+4E00..U+9FFF`. There are no additional terms or weights. The candidate is selected only when `candidate_cjk_count > original_cjk_count`; equality preserves the original. Matching codec failures return the original, while unrelated exceptions propagate.
+Generators `FUN_180015fe0` and `FUN_180016200` compute the original and candidate scores identically: each counts characters whose code point is in the inclusive CJK Unified Ideographs range `U+4E00..U+9FFF`. There are no additional terms or weights. The candidate is selected only when `candidate_cjk_count > original_cjk_count`; equality preserves the original. `UnicodeEncodeError` and `UnicodeDecodeError` return the original, while unrelated exceptions propagate.
 
 `_parse_result` applies `_strip_code_fence`, then `_repair_mojibake`. A falsey result raises:
 
@@ -715,7 +717,7 @@ If construction succeeds, that result is returned. If construction raises the on
 handler_class(clip_model_path=mmproj_path)
 ```
 
-A nonmatching exception class or message restores and propagates the original exception; a failed fallback construction propagates the fallback error. This is keyword-name compatibility adaptation, not a change to the selected path. The retained compatibility exception class identity remains Unknown.
+Only `TypeError` enters this compatibility fallback. A nonmatching exception class or message restores and propagates the original exception; a failed fallback construction propagates the fallback error. This is keyword-name compatibility adaptation, not a change to the selected path.
 
 Branches without a projector retain `None` unless a post-construction Qwen 3.8 text handler is installed.
 
@@ -794,7 +796,7 @@ Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_form
 
 The following remain intentionally unresolved:
 
-- Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
+- The remaining exception identities in the API-key import and malformed local-response fallback paths.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
