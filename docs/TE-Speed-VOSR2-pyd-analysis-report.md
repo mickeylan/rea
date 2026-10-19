@@ -362,7 +362,42 @@ enc_dim
 layer_dinov2b_list
 ```
 
-Construction also reads optional/related values including `resolution`, `mlp_ratio`, `encdim_ratio`, and `use_qknorm`. It obtains the ComfyUI torch device and UNet offload device, resolves the selected dtype, and constructs `LightningDiT`. Weight discovery/loading and VAE/DINO construction continue after that point; their exact error and rollback ordering remain under analysis.
+Construction also reads optional/related values including `resolution`, `mlp_ratio`, `encdim_ratio`, and `use_qknorm`. It obtains the ComfyUI torch device and UNet offload device, resolves the selected dtype, and constructs `LightningDiT`.
+
+After the DiT, VAE, and DINO model objects and their state have been prepared, `load_model` imports `comfy.model_patcher.ModelPatcher` and constructs three independent patchers:
+
+```python
+dit_patcher = ModelPatcher(
+    dit_model,
+    load_device=load_device,
+    offload_device=offload_device,
+)
+vae_patcher = ModelPatcher(
+    vae_model,
+    load_device=load_device,
+    offload_device=offload_device,
+)
+dino_patcher = ModelPatcher(
+    dino_model,
+    load_device=load_device,
+    offload_device=offload_device,
+)
+```
+
+It then returns a newly constructed model owner equivalent to:
+
+```python
+TESpeedVOSR2Model(
+    dit_patcher,
+    vae_patcher,
+    dino_patcher,
+    args,
+    dtype_name,
+    compute_dtype,
+)
+```
+
+The patchers are therefore owned by the returned `TESpeedVOSR2Model`; they are not a shared singleton cache at this boundary. The common construction-failure tail releases Python references, but no `unload_model_and_clones`, `soft_empty_cache`, resource `close`, or explicit rollback call was observed inside `load_model`. This does not prove native/GPU resource leakage—destructors may run during decref—but there is no explicit transactional rollback in this function.
 
 The exact constructor is:
 
@@ -671,8 +706,8 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Finish `load_model` weight/VAE/DINO construction and rollback ordering.
-2. Recover exact patcher construction and ownership in `load_model`.
+1. Finish exact DiT/VAE/DINO weight discovery and state-loading behavior.
+2. Recover constructor failures and compatibility handling for malformed model bundles.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
