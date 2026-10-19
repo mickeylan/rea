@@ -341,7 +341,88 @@ dinov2_vitl14.safetensors
 dinov2_vitl14_pretrain.pth
 ```
 
-This supports a model bundle containing LightningDiT, Qwen Image VAE 2D, and DINOv2 components managed through ComfyUI primitives. Exact constructor parameters, state-dict policies, device movement, cache identity, and unload ordering remain Unknown.
+This supports a model bundle containing LightningDiT, Qwen Image VAE 2D, and DINOv2 components managed through ComfyUI primitives.
+
+### Loading and model construction
+
+The public loader is exactly:
+
+```python
+load_model(bundle_name: str, dtype_name: str)
+```
+
+It resolves `_bundle_path(bundle_name)`, requires the result to be a directory, opens `args.json` in text mode with UTF-8 encoding, and parses it with `json.load`. The statically observed required architecture-key set includes:
+
+```text
+dim
+depth
+num_heads
+patch_size
+enc_dim
+layer_dinov2b_list
+```
+
+Construction also reads optional/related values including `resolution`, `mlp_ratio`, `encdim_ratio`, and `use_qknorm`. It obtains the ComfyUI torch device and UNet offload device, resolves the selected dtype, and constructs `LightningDiT`. Weight discovery/loading and VAE/DINO construction continue after that point; their exact error and rollback ordering remain under analysis.
+
+`TESpeedVOSR2Model.__init__` requires seven values after `self`. The initialized object stores those six component/configuration arguments plus one patcher-like argument, then initializes:
+
+- compile-requested, compile-enabled, compile-first-call, and compile-fallback state;
+- default memory policy `"auto"`;
+- `_active_patcher = None`;
+- `_resident_ready = False`;
+- an empty cache dictionary;
+- additional internal readiness flags as false;
+- a one-element patcher collection and its derived model-size observation.
+
+Exact constructor parameter names are still being mapped to those seven slots.
+
+### Compile policy
+
+```python
+model.set_torch_compile(enabled, bundle_dir)
+```
+
+normalizes `enabled` to `bool`, records `_compile_requested`, and resets `_compile_first_call` and `_compile_fallback` to false. A false request sets `_compile_enabled = False` and returns `None`.
+
+For a true request it imports `triton`. A matching missing-import failure logs:
+
+```text
+[TE-Speed-VOSR2] torch_compile requested but triton is not installed; skipping.
+```
+
+and leaves `_compile_enabled = False`. Otherwise it creates bundle-local `_compile` cache directories, sets `TORCHINDUCTOR_CACHE_DIR` and `TRITON_CACHE_DIR` only when absent, and compiles `dit_patcher.model.forward_flexible` through:
+
+```python
+torch.compile(
+    forward_flexible,
+    backend="inductor",
+    mode="default",
+    dynamic=False,
+)
+```
+
+The compiled callable is marked with `_te_compiled_flex`; successful installation sets `_compile_enabled = True`. The body contains a warning-and-disable fallback path for compilation failure rather than making compilation mandatory.
+
+### Memory policy and staged cleanup
+
+```python
+model.set_memory_policy(policy: str)
+```
+
+accepts `"auto"`, `"resident"`, and `"staged"`; any other string is normalized to `"resident"`. When the effective value changes, it resets `_resident_ready = False` and `_active_patcher = None` before assigning `memory_policy`. An unchanged value is returned without resetting readiness.
+
+`clear_staged(self)` iterates `self._patchers` and calls the equivalent of:
+
+```python
+comfy.model_management.unload_model_and_clones(
+    patcher,
+    unload_additional_models=False,
+)
+```
+
+for each patcher. After all unloads succeed it sets `_active_patcher = None`, sets `_resident_ready = False`, calls `comfy.model_management.soft_empty_cache()`, and returns `None`. An iteration or unload failure propagates before the final state reset/cache-emptying sequence; cleanup is therefore not transactional.
+
+`prepare_vae_decode(self)` delegates to its separate `FUN_180012b00` body. Its exact patcher selection and staged-to-VAE transition remain to be decoded.
 
 ## Inference surface
 
@@ -425,10 +506,10 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Recover `load`, `make`, image `upscale`, and video `upscale` calling conventions and return paths.
-2. Recover `VOSR2Settings.normalized` rules.
-3. Decode the remaining `model_store` and `inference` global tables.
-4. Trace `load_model` and `TESpeedVOSR2Model` cache/device lifecycle.
+1. Finish `load_model` weight/VAE/DINO construction and rollback ordering.
+2. Resolve the seven `TESpeedVOSR2Model.__init__` slot names.
+3. Recover `prepare_vae_decode`, resident pinning, and staged load order.
+4. Decode the remaining `inference` global table.
 5. Trace `run_vosr2` route selection and exact cleanup/error behavior.
 
 ## Evidence identifiers
