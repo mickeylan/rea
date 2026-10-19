@@ -786,19 +786,21 @@ For a selected first shard, it generates every expected name for indices `1..tot
 空分片：{empty_names}
 ```
 
-Filesystem, conversion, formatting, and iteration failures propagate. The two explicitly constructed validation-error class identities remain Unknown, but the admission rules, return value, and message text are statically recovered.
+Selecting a non-first shard raises `ValueError`; an incomplete set with missing or empty files raises `FileNotFoundError`. Other filesystem, conversion, formatting, and iteration failures propagate. The admission rules, return value, exception classes, and message text are therefore statically recovered.
 
 ### Multimodal path
 
 Observed values include `llama_cpp.llama_multimodal`, `llama_cpp.llama_chat_format`, `mmproj_path`, `image_base64`, `image_url`, `Qwen3VLChatHandler`, and the Qwen vision template tokens. This establishes an explicit multimodal local path. It does not establish compatibility with every llama.cpp version or model family.
 
-## Deferred and unknown
+## Runtime-only and irrecoverable boundaries
 
-The following remain intentionally unresolved:
+No known static compatibility gap remains in the documented public calling convention, routing, request construction, response parsing, model-cache identity, or cleanup order. The following cannot be established by this read-only static analysis and are not inferred:
 
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
-- Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
-- Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
+- Original source annotations, comments, local variable names, and source formatting.
+- Runtime behavior for malformed third-party models, unavailable or version-incompatible llama.cpp/ComfyUI components, cancellation, device failure, and memory pressure.
+
+These limitations prevent a claim of original-source recovery or runtime equivalence. They do not change the statically reconstructed public argument order, defaults, branch inputs, generation parameters, output shape, or documented error paths.
 
 ## Reproduction commands
 
