@@ -422,7 +422,25 @@ comfy.model_management.unload_model_and_clones(
 
 for each patcher. After all unloads succeed it sets `_active_patcher = None`, sets `_resident_ready = False`, calls `comfy.model_management.soft_empty_cache()`, and returns `None`. An iteration or unload failure propagates before the final state reset/cache-emptying sequence; cleanup is therefore not transactional.
 
-`prepare_vae_decode(self)` delegates to its separate `FUN_180012b00` body. Its exact patcher selection and staged-to-VAE transition remain to be decoded.
+`prepare_vae_decode(self)` delegates to `FUN_180012b00` (2,580 bytes). Its recovered transition is:
+
+1. if `self._active_patcher is self.vae_patcher`, return `None` immediately;
+2. inspect `self.vae_patcher.load_device.type`;
+3. only for `"cuda"`, attempt `torch.cuda.mem_get_info(load_device)` and unpack `(free_bytes, total_bytes)`;
+4. failures in that memory-query block matching ordinary `Exception` are suppressed, leaving the free-memory observation unavailable;
+5. compare available free memory with `VAE_DECODE_RESERVE`;
+6. when free memory is below the reserve, log:
+
+   ```text
+   [TE-Speed-VOSR2] releasing DiT/DINO residency for VAE decode (free %.2f GiB, reserve %.2f GiB)
+   ```
+
+   using byte-to-GiB conversion by `1073741824`;
+
+7. call `self._unload_transformers()`;
+8. return `None`.
+
+The memory-query failure is intentionally non-fatal, but failures in logging or `_unload_transformers()` propagate. This helper releases transformer residency conditionally; it does not itself prove that the VAE patcher has been loaded afterward.
 
 ## Inference surface
 
@@ -474,7 +492,46 @@ run_vosr2
 
 Direct dependency/name observations include `torch.nn.functional`, `comfy.model_management`, `comfy.utils`, `backend.color`, and `backend.models.lightningdit`.
 
-The function names structurally support full-frame and tiled routes, phase timing, DINO feature caching, device/CPU movement, VAE fallback tiling, and final batch assembly. They do not yet prove exact algorithms, tensor layouts, numeric constants, error handling, or profile-selection conditions.
+### `run_vosr2` calling convention and admission
+
+The public wrapper at `FUN_180033b50` (1,712 bytes) and implementation at `FUN_180034230` establish:
+
+```python
+run_vosr2(
+    model,
+    images,
+    scale,
+    seed,
+    settings,
+    batch_override=None,
+    temporal_cache=False,
+    auto_expand_vae_tile=False,
+)
+```
+
+The first five parameters are required; the final three may be supplied positionally or by keyword. Generated parser failures retain the Python exception and return native `NULL`.
+
+The implementation validates the ComfyUI image boundary before inference:
+
+- input must have shape `[B, H, W, C]`, otherwise the error begins `TE-Speed-VOSR2 expects IMAGE tensor [B, H, W, C], got shape `;
+- the last dimension must contain RGB or RGBA channels, otherwise the error is `TE-Speed-VOSR2 supports RGB/RGBA IMAGE input, got <n> channels`;
+- RGBA handling and exact alpha disposition are still being traced.
+
+Before choosing an inference route it invokes `_ensure_speed_runtime()` and `_enable_fast_math()`. It resolves the model memory policy, uses the model-level value when the supplied setting is `"auto"`, and resolves a remaining `"auto"` value to `"resident"`. If the model implements `set_memory_policy`, that method is called; otherwise the `memory_policy` attribute is assigned directly.
+
+`batch_override` is converted to `int` and clamped to a minimum of 1 when truthy; a falsey override uses the configured batch value. The route logic compares `tile_strategy` with `"tiled"` and `"full_frame"`. A selected full-frame strategy disables tiled processing. The implementation retains explicit route labels `"streaming"` and `"full_frame"`, and directly resolves `_streaming_tiled` and `_full_frame`; `_phased_tiled` remains a separately registered helper used by the broader tiled workflow, but its exact selection predicate is not yet fully projected.
+
+The implementation records route/result metadata including `quality_profile`, `memory_policy`, `tiled`, attention backend, compile fallback, cache hits, DINO cache hits, tile count, batch count, used batch, and chunk-frame observations. When the effective memory policy is `"staged"`, it resolves and calls `model.clear_staged()` in its post-processing/cleanup region. Exact exception precedence between inference failure and staged cleanup is still Unknown.
+
+Observed bounded fallback diagnostics include:
+
+```text
+[TE-Speed-VOSR2] DiT tile batch %s ran out of memory, falling back to %s
+[TE-Speed-VOSR2] VAE tile %s ran out of memory, falling back to %s
+[TE-Speed-VOSR2] DiT attention backend for this run: %s
+```
+
+The function names and structured body therefore establish full-frame and streaming/tiled routes, phase timing, DINO feature caching, device/CPU movement, bounded OOM fallbacks, VAE preparation, and final batch assembly. Exact tensor formulas, blend weights, cache-signature fields, and every profile-selection threshold remain under analysis.
 
 ## README-derived behavior
 
@@ -508,9 +565,9 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 1. Finish `load_model` weight/VAE/DINO construction and rollback ordering.
 2. Resolve the seven `TESpeedVOSR2Model.__init__` slot names.
-3. Recover `prepare_vae_decode`, resident pinning, and staged load order.
-4. Decode the remaining `inference` global table.
-5. Trace `run_vosr2` route selection and exact cleanup/error behavior.
+3. Recover resident pinning and staged load order.
+4. Resolve `_phased_tiled` versus `_streaming_tiled` selection predicates and cache signatures.
+5. Trace exact OOM retry limits and cleanup/error precedence.
 
 ## Evidence identifiers
 
