@@ -685,6 +685,24 @@ The family strings and return values above are direct static observations. Handl
 - Qwen 3.8 with a projector uses `_create_qwen38_vision_handler(projector_path, chat_template=template, enable_thinking=think, preserve_thinking=False, reasoning_effort=reasoning_effort)` and assigns the result to `llm.chat_handler`.
 - The fallback Qwen 3 VL projector route requires `Qwen3VLChatHandler`; missing support raises `当前 llama-cpp-python 不支持 Qwen3VLChatHandler，请更新 llama-cpp-python。` and delegates construction through `_create_multimodal_handler`.
 
+`_adapt_qwen38_template` is implemented inline by `FUN_18000b570` (1,698 bytes) and requires a string `chat_template`. An empty template or one without `<|image_pad|>` is returned unchanged. Otherwise it runs the equivalent operation:
+
+```python
+adapted, count = re.subn(
+    r"\{\{-?\s*(['\"])<\|vision_start\|><\|image_pad\|><\|vision_end\|>\1\s*-?\}\}",
+    "{{- '<|vision_start|>' }}{%- if item.image_url is string %}{{- item.image_url }}{%- else %}{{- item.image_url.url }}{%- endif %}{{- '<|vision_end|>' }}",
+    chat_template,
+)
+```
+
+A positive replacement count returns `adapted`. Zero replacements raise:
+
+```text
+Qwen3.8 聊天模板包含 <|image_pad|>，但无法适配视觉输入。
+```
+
+Regex, unpacking, and type failures propagate; the helper does not silently retain an incompatible template.
+
 `_create_multimodal_handler` is implemented inline by `FUN_18000a010` (1,792 bytes) and requires exactly `handler_class` and string `mmproj_path`. It first calls:
 
 ```python
@@ -779,7 +797,6 @@ The following remain intentionally unresolved:
 - Exact exception-class identities caught during API-key import, JSON decoding, codec repair, and related provider fallbacks.
 - Runtime filesystem results returned by the two dynamic choice helpers used by `INPUT_TYPES`.
 - Exact source annotations and the remaining provider/model-specific error branches of `enhance_prompt`.
-- Remaining Qwen template-adaptation edge cases.
 - Runtime behavior for malformed models, unavailable llama.cpp, cancellation, and memory pressure.
 
 ## Reproduction commands
