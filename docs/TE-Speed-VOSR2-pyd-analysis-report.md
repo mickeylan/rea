@@ -519,7 +519,7 @@ The implementation validates the ComfyUI image boundary before inference:
 
 Before choosing an inference route it invokes `_ensure_speed_runtime()` and `_enable_fast_math()`. It resolves the model memory policy, uses the model-level value when the supplied setting is `"auto"`, and resolves a remaining `"auto"` value to `"resident"`. If the model implements `set_memory_policy`, that method is called; otherwise the `memory_policy` attribute is assigned directly.
 
-`batch_override` is converted to `int` and clamped to a minimum of 1 when truthy; a falsey override uses the configured batch value. The route logic compares `tile_strategy` with `"tiled"` and `"full_frame"`. A selected full-frame strategy disables tiled processing. The implementation retains explicit route labels `"streaming"` and `"full_frame"`, and directly resolves `_streaming_tiled` and `_full_frame`; `_phased_tiled` remains a separately registered helper used by the broader tiled workflow, but its exact selection predicate is not yet fully projected.
+`batch_override` is converted to `int` and clamped to a minimum of 1 when truthy; a falsey override uses the configured batch value. The route logic compares `tile_strategy` with `"tiled"` and `"full_frame"`. A selected full-frame strategy disables tiled processing. The implementation retains explicit route labels `"streaming"` and `"full_frame"`, and directly resolves `_streaming_tiled` and `_full_frame`.
 
 Both tiled helpers have exact ten-argument calling conventions:
 
@@ -553,17 +553,53 @@ _streaming_tiled(
 
 Their wrappers require all ten values and permit ordinary positional/keyword population. `_phased_tiled` delegates to `FUN_180023c40` (31,435 bytes); `_streaming_tiled` delegates to `FUN_18002bdc0`. They are parallel implementations with a shared input contract, not aliases.
 
+The complete static name-reference set for `_phased_tiled` contains only its own wrapper/body registration and module-initializer records. No reference from `run_vosr2` was observed. Conversely, `run_vosr2` directly resolves and calls `_streaming_tiled` with ten arguments and unpacks its five-element result. Therefore the current public workflow uses streaming tiled inference; `_phased_tiled` is retained private code but is not established as an active route.
+
 The implementation records route/result metadata including `quality_profile`, `memory_policy`, `tiled`, attention backend, compile fallback, cache hits, DINO cache hits, tile count, batch count, used batch, and chunk-frame observations. When the effective memory policy is `"staged"`, it resolves and calls `model.clear_staged()` in its post-processing/cleanup region. Exact exception precedence between inference failure and staged cleanup is still Unknown.
 
-Observed bounded fallback diagnostics include:
+### Batch sizing and VAE fallback
+
+`_dit_tile_batch(settings, frame_batch=1)` computes a bounded DiT tile batch. The module constants are:
+
+```python
+BALANCED_DIT_TILE_BATCH = 2
+SPEED_DIT_TILE_BATCH = 4
+```
+
+The recovered formula is:
+
+```python
+if settings.quality_profile == "speed":
+    divisor = 8
+    limit = SPEED_DIT_TILE_BATCH
+else:
+    divisor = 4
+    limit = BALANCED_DIT_TILE_BATCH
+return max(1, min(max(1, int(frame_batch)) // divisor, limit))
+```
+
+`_fallback_vae_tile(settings, exc)` uses `SAFE_VAE_TILE = 1024`. If `settings.vae_tile_size <= 1024`, it re-raises the supplied exception. Otherwise it logs:
+
+```text
+[TE-Speed-VOSR2] VAE tile %s ran out of memory, falling back to %s
+```
+
+calls `comfy.model_management.soft_empty_cache()`, and returns the equivalent of:
+
+```python
+dataclasses.replace(settings, vae_tile_size=1024)
+```
+
+This establishes one bounded VAE downgrade: a tile already at or below 1024 is not retried smaller by this helper.
+
+Other observed diagnostics include:
 
 ```text
 [TE-Speed-VOSR2] DiT tile batch %s ran out of memory, falling back to %s
-[TE-Speed-VOSR2] VAE tile %s ran out of memory, falling back to %s
 [TE-Speed-VOSR2] DiT attention backend for this run: %s
 ```
 
-The function names and structured body therefore establish full-frame and streaming/tiled routes, phase timing, DINO feature caching, device/CPU movement, bounded OOM fallbacks, VAE preparation, and final batch assembly. Exact tensor formulas, blend weights, cache-signature fields, and every profile-selection threshold remain under analysis.
+The function names and structured body therefore establish full-frame and streaming/tiled routes, phase timing, DINO feature caching, device/CPU movement, bounded OOM fallbacks, VAE preparation, and final batch assembly. Exact tensor formulas, blend weights, cache-signature fields, and DiT OOM retry ordering remain under analysis.
 
 ## README-derived behavior
 
@@ -598,8 +634,8 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 1. Finish `load_model` weight/VAE/DINO construction and rollback ordering.
 2. Resolve the seven `TESpeedVOSR2Model.__init__` slot names.
 3. Recover resident pinning and staged load order.
-4. Resolve `_phased_tiled` versus `_streaming_tiled` selection predicates and cache signatures.
-5. Trace exact OOM retry limits and cleanup/error precedence.
+4. Recover streaming cache signatures and five-element tiled return semantics.
+5. Trace DiT OOM retry ordering and cleanup/error precedence.
 
 ## Evidence identifiers
 
