@@ -411,16 +411,37 @@ model.set_memory_policy(policy: str)
 
 accepts `"auto"`, `"resident"`, and `"staged"`; any other string is normalized to `"resident"`. When the effective value changes, it resets `_resident_ready = False` and `_active_patcher = None` before assigning `memory_policy`. An unchanged value is returned without resetting readiness.
 
-`clear_staged(self)` iterates `self._patchers` and calls the equivalent of:
+`pin_resident(self)` does not load a model by itself. It sets `_resident_ready = False` and returns Python `False`, forcing later residency logic to establish the state again.
+
+`_load(self, patcher)` is the common load/validation primitive. In `"staged"` mode, or when `patcher is not self._active_patcher`, it calls:
+
+```python
+comfy.model_management.load_models_gpu(
+    [patcher],
+    force_full_load=True,
+)
+```
+
+then assigns `_active_patcher = patcher` and returns `(patcher.model, patcher.load_device)`. When the requested patcher is already active in a non-staged policy, `_load` validates that the wrapped model is still on `load_device`, is not marked `model_lowvram`, and has no observed meta parameters. If this validation indicates external offload, it logs:
+
+```text
+[TE-Speed-VOSR2] %s was externally offloaded; reloading it
+```
+
+sets `_active_patcher = None`, and enters the same full-load path. The validation is therefore an active residency check, not merely an identity-cache hit.
+
+`_load_stage(self, patcher)` delegates directly to `_load` unless `memory_policy == "staged"`. In staged mode it iterates `_patchers`, skips the requested patcher by identity, and calls:
 
 ```python
 comfy.model_management.unload_model_and_clones(
-    patcher,
+    other_patcher,
     unload_additional_models=False,
 )
 ```
 
-for each patcher. After all unloads succeed it sets `_active_patcher = None`, sets `_resident_ready = False`, calls `comfy.model_management.soft_empty_cache()`, and returns `None`. An iteration or unload failure propagates before the final state reset/cache-emptying sequence; cleanup is therefore not transactional.
+for every other patcher. Only after that loop completes does it set `_active_patcher = None` and call `_load(self, patcher)`. An unload failure therefore prevents the requested stage load and can leave earlier patchers already unloaded.
+
+`clear_staged(self)` iterates every entry in `self._patchers` and performs the same `unload_model_and_clones(..., unload_additional_models=False)` call. After all unloads succeed it sets `_active_patcher = None`, sets `_resident_ready = False`, calls `comfy.model_management.soft_empty_cache()`, and returns `None`. An iteration or unload failure propagates before the final state reset/cache-emptying sequence; cleanup is therefore not transactional.
 
 `prepare_vae_decode(self)` delegates to `FUN_180012b00` (2,580 bytes). Its recovered transition is:
 
@@ -633,7 +654,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 1. Finish `load_model` weight/VAE/DINO construction and rollback ordering.
 2. Resolve the seven `TESpeedVOSR2Model.__init__` slot names.
-3. Recover resident pinning and staged load order.
+3. Recover the constructor-owned patcher identities and resident-ready promotion point.
 4. Recover streaming cache signatures and five-element tiled return semantics.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
 
