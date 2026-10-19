@@ -521,6 +521,38 @@ Before choosing an inference route it invokes `_ensure_speed_runtime()` and `_en
 
 `batch_override` is converted to `int` and clamped to a minimum of 1 when truthy; a falsey override uses the configured batch value. The route logic compares `tile_strategy` with `"tiled"` and `"full_frame"`. A selected full-frame strategy disables tiled processing. The implementation retains explicit route labels `"streaming"` and `"full_frame"`, and directly resolves `_streaming_tiled` and `_full_frame`; `_phased_tiled` remains a separately registered helper used by the broader tiled workflow, but its exact selection predicate is not yet fully projected.
 
+Both tiled helpers have exact ten-argument calling conventions:
+
+```python
+_phased_tiled(
+    model,
+    source_cpu,
+    h,
+    w,
+    seed,
+    settings,
+    batch_size,
+    device,
+    cache_enabled,
+    pbar,
+)
+
+_streaming_tiled(
+    model,
+    source_cpu,
+    h,
+    w,
+    seed,
+    settings,
+    batch_size,
+    device,
+    cache_enabled,
+    pbar,
+)
+```
+
+Their wrappers require all ten values and permit ordinary positional/keyword population. `_phased_tiled` delegates to `FUN_180023c40` (31,435 bytes); `_streaming_tiled` delegates to `FUN_18002bdc0`. They are parallel implementations with a shared input contract, not aliases.
+
 The implementation records route/result metadata including `quality_profile`, `memory_policy`, `tiled`, attention backend, compile fallback, cache hits, DINO cache hits, tile count, batch count, used batch, and chunk-frame observations. When the effective memory policy is `"staged"`, it resolves and calls `model.clear_staged()` in its post-processing/cleanup region. Exact exception precedence between inference failure and staged cleanup is still Unknown.
 
 Observed bounded fallback diagnostics include:
