@@ -241,6 +241,15 @@ follow also remain unknown. Partial enumeration of one root does not erase
 known effects in another, and unavailable content hashes do not by themselves
 make path absence unknown.
 
+When a follow-up read fails after an entry's metadata was observed, the
+snapshot keeps unaffected observations and records an `entry_unavailable`
+enumeration omission with the root-aliased path and system error code.
+Successfully observed identity replacements use `identity_changed` with a null
+system code. Unstable symlink targets are omitted; already observed directory
+metadata remains available. The affected root stays incomplete, so omitted
+entries do not prove deletion. A path missing at its initial lookup remains an
+observed absence. Cancellation and unexpected I/O failures still stop capture.
+
 Terminal frame `data` is the comparison text after the selected normalization.
 New captures also preserve `raw_data` when normalization changes a PTY chunk;
 otherwise `data` is already the original text. Older captures may lack the
@@ -425,7 +434,9 @@ results for unaffected dimensions and mark affected dimensions unknown; an
 incomplete capture cannot locate the first divergence across all dimensions.
 Trace assertions use coverage for the sources they select, so an assertion
 about complete raw terminal output need not fail because rendered snapshots
-were omitted. Captures missing `truncation_details` are rejected on import;
+were omitted. A trace difference applies to the dimensions identified by its
+diagnostic; unrelated dimensions retain their own comparison, including unknown
+coverage. Captures missing `truncation_details` are rejected on import;
 preserve them as historical files and recapture for current comparisons.
 `limits.file_bytes` is already the cumulative whole-file hashing budget,
 independent of `limits.output_bytes`, which bounds retained terminal content.

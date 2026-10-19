@@ -74,12 +74,14 @@ if (!(await compiledRuntimeExists(runtimeFiles))) {
   const { createCliResultOutput } =
     await import("../dist/cli-runtime/cliResultOutput.js");
   const {
+    normalizeCliArguments,
     renderCliOutputArgumentError,
     renderEmptyFilteredCliOutput,
     validateCliOutputArguments,
   } = await import("../dist/cli-runtime/cliOutput.js");
   guardClosedStdout();
-  const outputArguments = validateCliOutputArguments(args);
+  const cliArgs = normalizeCliArguments(args);
+  const outputArguments = validateCliOutputArguments(cliArgs);
   const configurationError = cliConfigurationError(process.env);
   if (configurationError !== undefined) {
     process.stderr.write(`${configurationError}\n`);
@@ -89,22 +91,36 @@ if (!(await compiledRuntimeExists(runtimeFiles))) {
     process.exitCode = 1;
   } else {
     let wroteOutput = false;
-    const resultOutput = createCliResultOutput(args, process.stdout);
-    await createCli(process.env, resultOutput).serve(args, {
-      stdout: (output) => {
-        if (resultOutput?.handled) {
-          if (resultOutput.failed && !stdoutClosed)
-            process.stderr.write(output);
-          return;
-        }
-        if (output.length > 0) wroteOutput = true;
-        writeStdout(output);
-      },
-      // A command failure caused by the closed pipe keeps the pipe's status.
-      exit: (code) => process.exit(stdoutClosed ? SIGPIPE_EXIT_STATUS : code),
-    });
+    const resultOutput = createCliResultOutput(cliArgs, process.stdout);
+    try {
+      await createCli(process.env, resultOutput).serve(cliArgs, {
+        stdout: (output) => {
+          if (resultOutput?.handled) {
+            if (resultOutput.failed && !stdoutClosed)
+              process.stderr.write(output);
+            return;
+          }
+          if (output.length > 0) wroteOutput = true;
+          writeStdout(output);
+        },
+        // A command failure caused by the closed pipe keeps the pipe's status.
+        exit: (code) => process.exit(stdoutClosed ? SIGPIPE_EXIT_STATUS : code),
+      });
+    } catch (cause) {
+      if (wroteOutput) throw cause;
+      const recovered = await resultOutput
+        ?.recoverFormattingFailure(cause)
+        .catch((writeFailure) => {
+          // Recovery writes outside Incur's command boundary. A reader that
+          // declined this document keeps the same quiet SIGPIPE outcome.
+          if (!stdoutClosed) throw writeFailure;
+          return true;
+        });
+      if (!recovered) throw cause;
+      process.exitCode = stdoutClosed ? SIGPIPE_EXIT_STATUS : 1;
+    }
     if (!wroteOutput && !resultOutput?.handled)
-      writeStdout(renderEmptyFilteredCliOutput(args) ?? "");
+      writeStdout(renderEmptyFilteredCliOutput(cliArgs) ?? "");
   }
 }
 
