@@ -364,17 +364,36 @@ layer_dinov2b_list
 
 Construction also reads optional/related values including `resolution`, `mlp_ratio`, `encdim_ratio`, and `use_qknorm`. It obtains the ComfyUI torch device and UNet offload device, resolves the selected dtype, and constructs `LightningDiT`. Weight discovery/loading and VAE/DINO construction continue after that point; their exact error and rollback ordering remain under analysis.
 
-`TESpeedVOSR2Model.__init__` requires seven values after `self`. The initialized object stores those six component/configuration arguments plus one patcher-like argument, then initializes:
+The exact constructor is:
 
-- compile-requested, compile-enabled, compile-first-call, and compile-fallback state;
-- default memory policy `"auto"`;
-- `_active_patcher = None`;
-- `_resident_ready = False`;
-- an empty cache dictionary;
-- additional internal readiness flags as false;
-- a one-element patcher collection and its derived model-size observation.
+```python
+TESpeedVOSR2Model.__init__(
+    self,
+    dit_patcher,
+    vae_patcher,
+    dino_patcher,
+    args,
+    dtype_name,
+    compute_dtype,
+)
+```
 
-Exact constructor parameter names are still being mapped to those seven slots.
+All seven slots, including `self`, are required and may be populated positionally or by keyword. The body stores the six supplied fields directly, then initializes:
+
+- `vae_amp = False` and `vae_encode_amp = False`;
+- `memory_policy = "auto"`;
+- `_active_patcher = None` and `_resident_ready = False`;
+- `_dino_norm_cache = {}`;
+- `_compile_enabled`, `_compile_requested`, `_compile_first_call`, and `_compile_fallback` to `False`.
+
+It then derives:
+
+```python
+dino_size = int(args.get("dinov2_size", 448))
+dino_layer = next(iter(args.get("layer_dinov2b_list", [17])))
+```
+
+Missing/empty or non-iterable layer data is not silently repaired by the constructor; the corresponding Python exception is preserved. Complete references to the `_resident_ready` name show only assignments of `False`: construction, memory-policy changes, `pin_resident`, and staged cleanup. No assignment of `True` or truth test was observed. Current residency decisions therefore use `_active_patcher`; `_resident_ready` is retained state but is not promoted in the analyzed module.
 
 ### Compile policy
 
@@ -653,8 +672,8 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 ## Next analysis steps
 
 1. Finish `load_model` weight/VAE/DINO construction and rollback ordering.
-2. Resolve the seven `TESpeedVOSR2Model.__init__` slot names.
-3. Recover the constructor-owned patcher identities and resident-ready promotion point.
+2. Recover exact patcher construction and ownership in `load_model`.
+3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
 
