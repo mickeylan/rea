@@ -240,7 +240,22 @@ A failure of the public `PyTuple_New(1)` or its item insertion follows error cle
 
 A retained-session analysis of the helper boundaries established:
 
-- `_build_system_prompt` uses wrapper `FUN_180003830` (829 bytes) and body `FUN_180003b70` (1,860 bytes). The wrapper accepts two exact positional values and requires keyword-only `output_language`; the retained positional-name observation is `base_prompt`. The body formats and concatenates Python strings and conditionally tests the supplied objects. Exact language templates remain module-initialized globals.
+- `_build_system_prompt` uses wrapper `FUN_180003830` (829 bytes) and body `FUN_180003b70` (1,860 bytes). The wrapper accepts two exact positional values and requires keyword-only `output_language`; the retained positional-name observation is `base_prompt`. Falsey language selects `中文`; any value whose text is not exactly `中文` selects `英文`.
+
+  For local/API text-output routes, the helper first chooses one exact mode policy:
+
+  ```text
+  当前为本地模式：只输出最终增强后的提示词纯文本，不要输出 JSON、字段名、代码块、分析或解释。
+  当前为 API 模式：只输出最终增强后的提示词纯文本，不要输出 JSON、字段名、代码块、分析或解释。
+  ```
+
+  It then builds this highest-priority language rule, removes conflicting language rules from `base_prompt` through `_remove_conflicting_language_rules`, and concatenates `cleaned_base`, `QWEN_OUTPUT_POLICY`, the language rule, and the mode policy with the observed blank-line/newline separators:
+
+  ```text
+  最终语言规则（优先级最高）：节点选择的输出语言是“{language}”。除用户明确要求显示在图片中的文字、专有名词和品牌名外，最终提示词的全部描述性文字必须使用{language}。不要根据用户输入语言、模板示例语言或图片中的文字语言改变这个选择。只输出最终提示词纯文本，不输出 JSON、字段名、Markdown、分析过程、思考内容或解释。
+  ```
+
+  For the official-PE route it instead removes conflicting language rules, appends `QWEN_OFFICIAL_PE_POLICY`, and selects one exact JSON-output rule. The Chinese form requires all descriptive prose in `rewritten_prompt` to be Chinese while preserving user-visible text, proper nouns, and brand names; the English form imposes the equivalent English requirement. Both require a single-line JSON object and immediate termination after the closing `}`. This branch does not append the local/API pure-text mode policy.
 - `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one argument, `seed_value`, positionally or by keyword. The Cython runtime type check requires a Python integer; an exact `int` is retained, while an integer subtype is normalized through `PyNumber_Long`. At `0x1800045c4-0x1800045d4`, the converted value is compared with initialized integer global `DAT_180051bd0 = 0` using rich-comparison opcode `5` (`Py_GE`). A true comparison returns the normalized integer; a false comparison returns Python `None`. Thus the behavioral contract is `seed if seed >= 0 else None`: zero and positive values are retained, negative values select `None`. Conversion failures are matched against two retained exception-class globals; matching exceptions are cleared and also return `None`, while nonmatching exceptions, comparison failures, and truth-test failures propagate through native `NULL`. The two caught exception-class identities remain Unknown; treating them as `TypeError`/`ValueError` would be a source-level inference rather than a direct observation.
 - `enable_thinking` at the queried reference belongs to nested `_create_qwen38_text_handler.qwen38_formatter`, `FUN_18000cdc0` (1,113 bytes). Its observed call inputs include `reasoning_effort`, `enable_thinking`, `preserve_thinking`, and `formatter`. The body constructs a keyword dictionary and invokes the retained formatter callable. This is Qwen 3.8 formatting behavior, not proof of the top-level input default.
 
