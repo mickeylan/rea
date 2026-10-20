@@ -191,6 +191,54 @@ it("fails fast on malformed names without requesting strings", async () => {
   expect(calls).toEqual(["health", "list_names"]);
 });
 
+it("stops between inventories on MCP cancellation without retaining partial Evidence", async () => {
+  const directory = await createTestTempDirectory("rea-cython-mcp-cancel-");
+  const path = join(directory, "cancelled.pyd");
+  await writeFile(path, pe(0x8664, 64, 0x2002));
+  const calls: string[] = [];
+  let notifyStarted: (() => void) | undefined;
+  const started = new Promise<void>((resolve) => {
+    notifyStarted = resolve;
+  });
+  const session = createTestBinarySession(
+    () =>
+      ({
+        execute: (operation, _parameters, options) => {
+          calls.push(operation);
+          if (operation === "health") return Promise.resolve(observed(null));
+          if (operation !== "list_names") return Promise.resolve(observed([]));
+          notifyStarted?.();
+          return new Promise((resolve) => {
+            options?.signal?.addEventListener(
+              "abort",
+              () =>
+                resolve(
+                  observed([{ address: "0x1000", value: "PyInit_cancelled" }]),
+                ),
+              { once: true },
+            );
+          });
+        },
+        close: () => Promise.resolve(ok(null)),
+      }) satisfies AnalysisClient,
+  );
+  const opened = await session.open(path);
+  if (!opened.ok) throw opened.error;
+  const client = await connectSessionServer(session);
+  const controller = new AbortController();
+
+  const request = client.callTool(
+    { name: "inspect_cython_extension", arguments: {} },
+    { signal: controller.signal },
+  );
+  await started;
+  controller.abort();
+
+  await expect(request).rejects.toThrow();
+  await expect.poll(() => calls).toEqual(["health", "list_names"]);
+  expect(session.exportEvidenceBundle().records).toEqual([]);
+});
+
 it("rejects inventories produced under different analysis profiles", async () => {
   const directory = await createTestTempDirectory("rea-cython-mcp-profile-");
   const path = join(directory, "profile-mismatch.pyd");
