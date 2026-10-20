@@ -680,6 +680,22 @@ run_vosr2
 
 Direct dependency/name observations include `torch.nn.functional`, `comfy.model_management`, `comfy.utils`, `backend.color`, and `backend.models.lightningdit`.
 
+`_tile_positions(length, tile, overlap)` requires all three arguments and implements endpoint-covering one-dimensional tiling:
+
+```python
+def _tile_positions(length, tile, overlap):
+    if length <= tile:
+        return [0]
+    step = max(tile - overlap, 1)
+    positions = list(range(0, length - tile + 1, step))
+    final = length - tile
+    if positions[-1] != final:
+        positions.append(final)
+    return positions
+```
+
+Consequently overlap values at or above the tile size reduce the stride to `1`; the helper does not reject them. For a longer dimension, the final tile is always anchored at `length - tile`, even when that produces a shorter last stride. Arithmetic, comparison, range construction, and list failures propagate as Python exceptions.
+
 ### `run_vosr2` calling convention and admission
 
 The public wrapper at `FUN_180033b50` (1,712 bytes) and implementation at `FUN_180034230` establish:
