@@ -782,6 +782,22 @@ The first four values are required and all eight may be populated positionally o
 
 This proves that temporal reuse bypasses DINO feature extraction selectively; it does not bypass the DiT `one_step` restoration itself.
 
+The model boundary is exactly:
+
+```python
+TESpeedVOSR2Model.one_step(self, latent, noise, features)
+```
+
+All four arguments are required. Its implementation moves `noise` to `dit_patcher.load_device`, moves `latent` to that noise tensor's device, and constructs:
+
+```python
+inp = torch.cat([latent_on_device, noise_on_device], dim=1)
+velocity = self.velocity(inp, 1.0, 0.0, features)
+restored = noise_on_device - velocity.to(noise_on_device.device)
+```
+
+For `memory_policy == "staged"`, the restored tensor is transferred to CPU before return; otherwise it remains on the active device. The `velocity` method itself has the exact required signature `velocity(self, inp, t_cur, t_next, features)`. This establishes the one-step time endpoints and subtraction order without inferring the model's internal numerical architecture.
+
 Its associated VAE helpers are:
 
 ```python
