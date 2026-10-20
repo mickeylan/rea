@@ -362,6 +362,45 @@ enc_dim
 layer_dinov2b_list
 ```
 
+### DiT construction
+
+`compute_dtype` is resolved first by `_dtype(dtype_name, load_device)`. `LightningDiT` is then constructed entirely with keyword arguments:
+
+```python
+LightningDiT(
+    input_size=args["resolution"] // 8,
+    patch_size=args["patch_size"],
+    in_channels=32,
+    out_channels=16,
+    hidden_size=args["dim"],
+    depth=args["depth"],
+    num_heads=args["num_heads"],
+    mlp_ratio=args["mlp_ratio"],
+    z_dims=args["enc_dim"],
+    encdim_ratio=args["encdim_ratio"],
+    auxiliary_time_cond=args.get("auxiliary_time_cond", False),
+    use_qknorm=args["use_qknorm"],
+    use_swiglu=args["use_swiglu"],
+    use_rope=args["use_rope"],
+    use_rmsnorm=args["use_rmsnorm"],
+    num_fused_layers=len(args.get("layer_dinov2b_list", [17])),
+)
+```
+
+Although the early explicit required-field check is narrower, subsequent direct dictionary indexing makes `resolution`, `mlp_ratio`, `encdim_ratio`, and the four `use_*` fields effectively required as well; absence propagates the dictionary lookup exception.
+
+The resulting DiT follows this order:
+
+```python
+dit_path = _find_dit(bundle)
+dit_state = _load_state(dit_path)
+_strict(dit_model, dit_state, dit_path)
+dit_model = dit_model.eval()
+dit_model.to(compute_dtype)
+```
+
+As with DINO, this `to(...)` call supplies the dtype but no explicit device; `ModelPatcher` owns later device placement.
+
 After constructing `LightningDiT`, it locates per-component weights through bound helpers:
 
 - `_find_dit(bundle)` checks these paths in order:
@@ -764,7 +803,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Recover exact DiT constructor arguments, dtype transition, and state-loading order.
+1. Recover `_dtype` accepted names, fallbacks, and exact dtype selection.
 2. Recover malformed architecture/state-value error branches and exception identities.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
