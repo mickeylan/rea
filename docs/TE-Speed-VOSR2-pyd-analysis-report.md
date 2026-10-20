@@ -798,6 +798,10 @@ restored = noise_on_device - velocity.to(noise_on_device.device)
 
 For `memory_policy == "staged"`, the restored tensor is transferred to CPU before return; otherwise it remains on the active device. The `velocity` method itself has the exact required signature `velocity(self, inp, t_cur, t_next, features)`. This establishes the one-step time endpoints and subtraction order without inferring the model's internal numerical architecture.
 
+`velocity` first calls `_load_stage(self, self.dit_patcher)` and requires its two-element result. It derives the compute dtype from `loaded_model.t_embedder.mlp[0].weight.dtype`, moves `inp` to the returned device and dtype, converts every feature tensor to that same device/dtype, and constructs full tensors for `t_cur` and `t_next` using the input batch dimension. It then calls the loaded model's `forward_flexible` with five positional inputs: converted input, current-time tensor, next-time tensor, converted features, and the retained stage/device value.
+
+The torch-compile path is fail-open for inference: a compiled `forward_flexible` runtime failure is logged, `_compile_enabled` is set to false, `_compile_fallback` is set to true, and the same five inputs are retried through eager `forward_flexible`. Other setup/conversion failures propagate. When the memory policy is `staged`, the resulting velocity tensor is moved to CPU before return; otherwise it remains on the active device.
+
 Its associated VAE helpers are:
 
 ```python
