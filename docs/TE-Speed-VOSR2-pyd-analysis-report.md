@@ -778,6 +778,26 @@ _decode_restored(model, restored, mean, std, h, w, settings)
 
 All parameters of those two helpers are required. This separates three phases at the private boundary: encode normalized/resized input, run full-frame restoration with optional feature-cache reuse, then decode/crop using the retained `mean`, `std`, `h`, and `w` observations.
 
+`_encode_resized` runs inside `_timed(model, "vae_encode")`. It first calls `_pad_multiple(resized)`, retaining the original spatial dimensions, then calls the model’s VAE encode boundary with the padded tensor plus `settings.vae_tile_size` and `settings.vae_tile_overlap`. That call must return exactly three values:
+
+```python
+latent, mean, std = model.encode(
+    padded,
+    settings.vae_tile_size,
+    settings.vae_tile_overlap,
+)
+```
+
+The helper returns the latent data together with `mean`, `std`, and the retained pre-padding dimensions. A CUDA `OutOfMemoryError` invokes `_fallback_vae_tile(settings, exc)` and retries the same encode once under `_timed(model, "vae_encode")` with the replacement settings. Non-CUDA-OOM exceptions propagate.
+
+`_decode_restored` similarly runs under `_timed(model, "vae_decode")`, calls the model decode boundary with `restored`, `mean`, `std`, and the active VAE tile settings, and applies the same one-step CUDA-OOM fallback. The decoded tensor is cropped with four-dimensional indexing equivalent to:
+
+```python
+decoded[:, :, :h, :w]
+```
+
+It returns a two-element internal tuple containing the cropped tensor and the effective settings object. This proves channel-first spatial processing inside the VAE helpers; conversion back to ComfyUI’s channel-last IMAGE layout belongs to the surrounding inference workflow.
+
 ### Temporal-cache decision helpers
 
 The exact private helper signatures are:
