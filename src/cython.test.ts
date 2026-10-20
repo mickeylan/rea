@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractCpythonModuleName,
   inspectCythonExtensionInventories,
+  MAX_CYTHON_INSPECTION_ITEMS_PER_CATEGORY,
   isPythonQualifiedName,
   isPythonSourcePath,
   projectCythonCallingConventionCandidate,
@@ -117,15 +118,44 @@ describe("Cython extension observations", () => {
       complete: true,
     });
 
-    expect(inspection.coverage).toEqual({
+    expect(inspection.coverage).toMatchObject({
       names_examined: 2,
       strings_examined: 2,
       complete: true,
+      projection_complete: true,
     });
     expect(inspection.python_extension.initializers).toEqual([duplicate]);
     expect(inspection.qualified_name_candidates).toEqual([
       { address: "0x2000", value: "package.module.Widget" },
     ]);
+  });
+
+  it("bounds projected candidates without weakening inventory completeness", () => {
+    const strings = Array.from(
+      { length: MAX_CYTHON_INSPECTION_ITEMS_PER_CATEGORY + 2 },
+      (_, index) => ({
+        address: `0x${index.toString(16)}`,
+        value: `package.module.symbol_${index}`,
+      }),
+    );
+    const inspection = inspectCythonExtensionInventories({
+      names: [],
+      strings,
+      complete: true,
+    });
+
+    expect(inspection.qualified_name_candidates).toHaveLength(
+      MAX_CYTHON_INSPECTION_ITEMS_PER_CATEGORY,
+    );
+    expect(inspection.coverage).toMatchObject({
+      strings_examined: strings.length,
+      complete: true,
+      projection_complete: false,
+      omitted: { qualified_name_candidates: 2 },
+    });
+    expect(inspection.limitations).toContainEqual(
+      expect.stringContaining("coverage.omitted"),
+    );
   });
 });
 

@@ -43,6 +43,8 @@ const sourcePathPattern =
   /^(?:[A-Za-z]:\\[^\r\n]+|\/[^\r\n]+)\.(?:py|pyx|c)$/iu;
 const pythonIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
+export const MAX_CYTHON_INSPECTION_ITEMS_PER_CATEGORY = 256;
+
 /** Extract an exact CPython extension module name from its initializer symbol. */
 export const extractCpythonModuleName = (symbol: string): string | null => {
   const match = /^PyInit_([A-Za-z_][A-Za-z0-9_]*)$/u.exec(symbol);
@@ -106,6 +108,15 @@ export const cythonExtensionInspectionSchema = z.strictObject({
     names_examined: z.number().int().nonnegative(),
     strings_examined: z.number().int().nonnegative(),
     complete: z.boolean(),
+    projection_complete: z.boolean(),
+    omitted: z.strictObject({
+      initializers: z.number().int().nonnegative(),
+      module_names: z.number().int().nonnegative(),
+      cython_markers: z.number().int().nonnegative(),
+      qualified_name_candidates: z.number().int().nonnegative(),
+      source_path_observations: z.number().int().nonnegative(),
+      cpython_type_hints: z.number().int().nonnegative(),
+    }),
   }),
   limitations: z.array(z.string()),
 });
@@ -738,28 +749,47 @@ export const inspectCythonExtensionInventories = (input: {
 }): CythonExtensionInspection => {
   const names = uniqueObservations(input.names);
   const strings = uniqueObservations(input.strings);
-  const initializers = names.filter(
+  const allInitializers = names.filter(
     ({ value }) => extractCpythonModuleName(value) !== null,
   );
-  const moduleNames = [
+  const allModuleNames = [
     ...new Set(
-      initializers.flatMap(({ value }) => {
+      allInitializers.flatMap(({ value }) => {
         const moduleName = extractCpythonModuleName(value);
         return moduleName === null ? [] : [moduleName];
       }),
     ),
   ].sort();
-  const markers = uniqueObservations(
+  const allMarkers = uniqueObservations(
     [...names, ...strings].filter(({ value }) => isCythonMarker(value)),
   );
-  const qualifiedNames = strings.filter(({ value }) =>
+  const allQualifiedNames = strings.filter(({ value }) =>
     isPythonQualifiedName(value),
   );
-  const sourcePaths = strings.filter(({ value }) => isPythonSourcePath(value));
-  const typeHints = names.flatMap((observation) => {
+  const allSourcePaths = strings.filter(({ value }) =>
+    isPythonSourcePath(value),
+  );
+  const allTypeHints = names.flatMap((observation) => {
     const category = pythonTypeHintFromCpythonSymbol(observation.value);
     return category === null ? [] : [{ ...observation, category }];
   });
+  const initializers = retainInspectionItems(allInitializers);
+  const moduleNames = retainInspectionItems(allModuleNames);
+  const markers = retainInspectionItems(allMarkers);
+  const qualifiedNames = retainInspectionItems(allQualifiedNames);
+  const sourcePaths = retainInspectionItems(allSourcePaths);
+  const typeHints = retainInspectionItems(allTypeHints);
+  const omitted = {
+    initializers: allInitializers.length - initializers.length,
+    module_names: allModuleNames.length - moduleNames.length,
+    cython_markers: allMarkers.length - markers.length,
+    qualified_name_candidates: allQualifiedNames.length - qualifiedNames.length,
+    source_path_observations: allSourcePaths.length - sourcePaths.length,
+    cpython_type_hints: allTypeHints.length - typeHints.length,
+  };
+  const projectionComplete = Object.values(omitted).every(
+    (count) => count === 0,
+  );
   const limitations = [
     "Qualified names and source paths are retained string observations, not proof of source recovery, class ownership, callable signatures, or runtime behavior.",
     ...(markers.length === 0
@@ -771,6 +801,11 @@ export const inspectCythonExtensionInventories = (input: {
       ? []
       : [
           "The supplied provider inventories were not established as complete.",
+        ]),
+    ...(projectionComplete
+      ? []
+      : [
+          `Each projected observation category retains at most ${String(MAX_CYTHON_INSPECTION_ITEMS_PER_CATEGORY)} items; coverage.omitted reports excluded matches.`,
         ]),
   ];
 
@@ -791,7 +826,12 @@ export const inspectCythonExtensionInventories = (input: {
       names_examined: input.names.length,
       strings_examined: input.strings.length,
       complete: input.complete,
+      projection_complete: projectionComplete,
+      omitted,
     },
     limitations,
   });
 };
+
+const retainInspectionItems = <T>(values: readonly T[]): T[] =>
+  values.slice(0, MAX_CYTHON_INSPECTION_ITEMS_PER_CATEGORY);

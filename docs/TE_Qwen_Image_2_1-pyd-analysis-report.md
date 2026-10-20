@@ -22,7 +22,7 @@ The public `inspect_cython_extension` workflow reported:
 - 87 qualified-name candidates, 13 Cython markers, and one retained source-path observation.
 - Cython runtime identity candidate `_cython_3_1_2limited_fastcallnofinalize`.
 - Retained build coordinate `F:\ComfyUI_portable_TE_v260130\ComfyUI\custom_nodes\TE_image\source_py_backup\TE_Qwen_Image_2_1_Prompt_Enhancer.c`.
-- Re-verification on 2026-10-20, after target-identity and inventory-coverage hardening, produced derived Evidence `ev_fc164e0a028e2baca4c4c30c9026dd96ad8c5423d4669643d3694cc407da1afa` with `workflow_revision: 1`, complete inventory coverage, and the target digest above.
+- Re-verification on 2026-10-20, after target-identity and output-budget hardening, produced derived Evidence `ev_615243ae80fe2352f610c5a603d48a1823cdd850caed80957e8ccc03ff37cfc7` with `workflow_revision: 2`, complete inventory and projection coverage, zero omitted candidates in every category, and the target digest above.
 
 The target contains the qualified class and method observations:
 
