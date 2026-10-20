@@ -424,7 +424,7 @@ After constructing `LightningDiT`, it locates per-component weights through boun
 - `_find_dino(bundle)` checks these bundle-root paths in order:
   1. `bundle/dinov2_vitl14.safetensors`;
   2. `bundle/dinov2_vitl14_pretrain.pth`.
-  It returns the first existing file. Failure raises `VOSR2LoadError` beginning `Missing DINOv2 weight under ` and includes both expected names.
+     It returns the first existing file. Failure raises `VOSR2LoadError` beginning `Missing DINOv2 weight under ` and includes both expected names.
 
 `_load_state(path)` dispatches by `path.suffix`:
 
@@ -741,7 +741,45 @@ _streaming_tiled(
 
 Their wrappers require all ten values and permit ordinary positional/keyword population. `_phased_tiled` delegates to `FUN_180023c40` (31,435 bytes); `_streaming_tiled` delegates to `FUN_18002bdc0`. They are parallel implementations with a shared input contract, not aliases.
 
-The complete static name-reference set for `_phased_tiled` contains only its own wrapper/body registration and module-initializer records. No reference from `run_vosr2` was observed. Conversely, `run_vosr2` directly resolves and calls `_streaming_tiled` with ten arguments and unpacks its five-element result. Therefore the current public workflow uses streaming tiled inference; `_phased_tiled` is retained private code but is not established as an active route.
+The complete static name-reference set for `_phased_tiled` contains only its own wrapper/body registration and module-initializer records. No reference from `run_vosr2` was observed. Conversely, `run_vosr2` directly resolves and calls `_streaming_tiled` with ten arguments and requires its result to contain exactly five elements. Therefore the current public workflow uses streaming tiled inference; `_phased_tiled` is retained private code but is not established as an active route.
+
+The five-element `_streaming_tiled` result is an internal调用约定, not the public node result. Structured construction proves:
+
+- element 1 is the effective `settings` object supplied to the helper;
+- elements 3 and 4 are retained counters/state values initialized in the streaming body;
+- element 0 is the assembled streaming result consumed by `run_vosr2`;
+- element 2 is another retained streaming observation.
+
+`run_vosr2` unpacks all five and carries them independently into result assembly. Exact semantic names for elements 2–4 remain Unknown because the native locals are reused across phase and cache branches; they will not be labeled as cache-hit, tile-count, or batch-count values until their producing operations are fully traced.
+
+### Temporal-cache decision helpers
+
+The exact private helper signatures are:
+
+```python
+_signature(frame)
+_cache_hit(current, previous, threshold)
+_reuse_flags(
+    signatures,
+    previous,
+    threshold,
+    cache_age,
+    cache_refresh,
+    enabled,
+)
+```
+
+`_signature` converts the selected frame view to float and downsamples it with `torch.nn.functional.interpolate(..., mode="area")` to a fixed module-owned spatial size. The exact indexing object and target dimensions remain unresolved; the result is a reduced tensor signature, not a scalar hash.
+
+`_cache_hit` returns false when `previous is None`, tensor shapes differ, or `threshold <= 0`. Otherwise it transfers `previous` to `current.device` and `current.dtype`, computes:
+
+```python
+mean(abs(current - previous)) <= float(threshold)
+```
+
+and returns that comparison. Conversion/device errors propagate.
+
+`_reuse_flags` first creates a `False` list with `len(signatures)` entries. It leaves that list unchanged unless `enabled` and `signatures` are truthy and `cache_age < cache_refresh`. Under those conditions it computes `_cache_hit(signatures[0], previous, threshold)` and stores the result at index `0`. No loop setting later flag positions was observed in this helper; multi-frame reuse decisions, if any, must be assembled by its callers rather than inferred here.
 
 The implementation records route/result metadata including `quality_profile`, `memory_policy`, `tiled`, attention backend, compile fallback, cache hits, DINO cache hits, tile count, batch count, used batch, and chunk-frame observations. When the effective memory policy is `"staged"`, it resolves and calls `model.clear_staged()` in its post-processing/cleanup region. Exact exception precedence between inference failure and staged cleanup is still Unknown.
 
@@ -822,7 +860,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 1. Recover malformed architecture/state-value error branches and exception identities.
 2. Recover exact malformed state-dictionary value filtering and error assembly.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
-4. Recover streaming cache signatures and five-element tiled return semantics.
+4. Resolve `_signature` frame indexing/target size and streaming tuple elements 2–4.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
 
 ## Evidence identifiers
