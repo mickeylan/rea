@@ -362,7 +362,35 @@ enc_dim
 layer_dinov2b_list
 ```
 
-Construction also reads optional/related values including `resolution`, `mlp_ratio`, `encdim_ratio`, and `use_qknorm`. It obtains the ComfyUI torch device and UNet offload device, resolves the selected dtype, and constructs `LightningDiT`.
+After constructing `LightningDiT`, it locates per-component weights through bound helpers:
+
+- `_find_dit(bundle)` checks these paths in order:
+  1. `bundle/checkpoints/ema_model.safetensors`;
+  2. `bundle/clean_weights/ema_model.safetensors`;
+  3. `bundle/ema_model.safetensors`.
+     If none is a file, it raises `VOSR2LoadError("Missing VOSR2 DiT weight under " + str(bundle))`.
+- `_find_dino(bundle)` iterates the module-owned `_DINO_FILES` candidates under the bundle root and returns the first existing file. Failure raises `VOSR2LoadError` beginning `Missing DINOv2 weight under ` and includes the expected candidate list.
+
+`_load_state(path)` dispatches by `path.suffix`:
+
+- `.safetensors` uses `safetensors.torch.load_file(str(path))`;
+- every other suffix uses `comfy.utils.load_torch_file(path, safe_load=True)`.
+
+The result must be a mapping whose retained values are `torch.Tensor` instances; otherwise it raises `VOSR2LoadError("Expected a state dict in " + str(path))`. This boundary therefore does not directly call `torch.load` and does not limit the non-safetensors branch to only `.pth` or `.pt`.
+
+`_strict(module, state, path)` creates a cleaned state dictionary before loading:
+
+- it strips the first matching prefix from `module.`, `_orig_mod.`, and `ema_model.`;
+- it drops bookkeeping keys `n_averaged`, `step_count`, and `decay`;
+- it calls `module.load_state_dict(cleaned_state, strict=False)` and unpacks `(missing, unexpected)`.
+
+If either result is non-empty, it raises `VOSR2LoadError` with:
+
+```text
+Checkpoint mismatch for <module-name>: missing=<missing>, unexpected=<unexpected>
+```
+
+Using `strict=False` internally is deliberate: compatibility is still strict at the helper boundary because any reported mismatch is converted into the explicit load error after prefix normalization and bookkeeping-key removal.
 
 After the DiT, VAE, and DINO model objects and their state have been prepared, `load_model` imports `comfy.model_patcher.ModelPatcher` and constructs three independent patchers:
 
@@ -706,8 +734,8 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Finish exact DiT/VAE/DINO weight discovery and state-loading behavior.
-2. Recover constructor failures and compatibility handling for malformed model bundles.
+1. Recover exact VAE directory/config loading and construction behavior.
+2. Recover malformed architecture/state-value error branches and exception identities.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
