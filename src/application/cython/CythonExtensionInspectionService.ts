@@ -87,6 +87,16 @@ export class CythonExtensionInspectionService {
     const namesProfile = namesExecution.value.analysisProfile;
     const stringsProfile = stringsExecution.value.analysisProfile;
     if (
+      !profileMatchesProvider(namesProfile, namesExecution.value.provider) ||
+      !profileMatchesProvider(stringsProfile, stringsExecution.value.provider)
+    )
+      return err(
+        new AnalysisOutputError(
+          OPERATION,
+          "A provider inventory profile did not match its producing provider identity.",
+        ),
+      );
+    if (
       !sameProvider(
         namesExecution.value.provider,
         stringsExecution.value.provider,
@@ -202,6 +212,11 @@ const validateSubject = (
           `${operation} returned observations for a different target identity.`,
         ),
       );
+
+const profileMatchesProvider = (
+  profile: { readonly provider: ProviderIdentity } | undefined,
+  provider: ProviderIdentity,
+): boolean => profile === undefined || sameProvider(profile.provider, provider);
 
 const sameProvider = (
   left: ProviderIdentity,
