@@ -788,8 +788,8 @@ export const inspectCythonExtensionInventories = (input: {
     source_path_observations: sourcePaths,
     cpython_type_hints: typeHints,
     coverage: {
-      names_examined: names.length,
-      strings_examined: strings.length,
+      names_examined: input.names.length,
+      strings_examined: input.strings.length,
       complete: input.complete,
     },
     limitations,

@@ -105,6 +105,28 @@ describe("Cython extension observations", () => {
     ]);
     expect(inspection.limitations[0]).toContain("not proof of source recovery");
   });
+
+  it("counts every examined inventory row while deduplicating projected evidence", () => {
+    const duplicate = { address: "0x1000", value: "PyInit_example" };
+    const inspection = inspectCythonExtensionInventories({
+      names: [duplicate, duplicate],
+      strings: [
+        { address: "0x2000", value: "package.module.Widget" },
+        { address: "0x2000", value: "package.module.Widget" },
+      ],
+      complete: true,
+    });
+
+    expect(inspection.coverage).toEqual({
+      names_examined: 2,
+      strings_examined: 2,
+      complete: true,
+    });
+    expect(inspection.python_extension.initializers).toEqual([duplicate]);
+    expect(inspection.qualified_name_candidates).toEqual([
+      { address: "0x2000", value: "package.module.Widget" },
+    ]);
+  });
 });
 
 // oxlint-disable-next-line max-lines-per-function -- keep candidate conflict and provenance semantics together.
