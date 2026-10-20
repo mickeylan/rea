@@ -421,7 +421,10 @@ After constructing `LightningDiT`, it locates per-component weights through boun
   2. `bundle/clean_weights/ema_model.safetensors`;
   3. `bundle/ema_model.safetensors`.
      If none is a file, it raises `VOSR2LoadError("Missing VOSR2 DiT weight under " + str(bundle))`.
-- `_find_dino(bundle)` iterates the module-owned `_DINO_FILES` candidates under the bundle root and returns the first existing file. Failure raises `VOSR2LoadError` beginning `Missing DINOv2 weight under ` and includes the expected candidate list.
+- `_find_dino(bundle)` checks these bundle-root paths in order:
+  1. `bundle/dinov2_vitl14.safetensors`;
+  2. `bundle/dinov2_vitl14_pretrain.pth`.
+  It returns the first existing file. Failure raises `VOSR2LoadError` beginning `Missing DINOv2 weight under ` and includes both expected names.
 
 `_load_state(path)` dispatches by `path.suffix`:
 
@@ -817,7 +820,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 ## Next analysis steps
 
 1. Recover malformed architecture/state-value error branches and exception identities.
-2. Resolve the exact `_DINO_FILES` candidate order.
+2. Recover exact malformed state-dictionary value filtering and error assembly.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
