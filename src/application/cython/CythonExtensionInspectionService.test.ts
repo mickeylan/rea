@@ -141,6 +141,18 @@ describe("CythonExtensionInspectionService", () => {
     if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
   });
 
+  it("fails closed on malformed strings after accepting names", async () => {
+    const analysis = new RecordingAnalysis(nameInventory, { invalid: true });
+    const result = await new CythonExtensionInspectionService().inspect(
+      analysis,
+      target,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(analysis.calls).toEqual(["list_names", "list_strings"]);
+    if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
+  });
+
   it("does not invoke provider primitives after prior cancellation", async () => {
     const controller = new AbortController();
     controller.abort();
