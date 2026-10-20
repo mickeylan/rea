@@ -18,7 +18,11 @@ import {
 } from "../../domain/cythonExtension.js";
 import type { BinaryTarget } from "../../domain/binaryTargetTypes.js";
 import { analysisProfilesEqual } from "../../domain/analysisProfile.js";
-import { createEvidence, type Evidence } from "../../domain/evidence.js";
+import {
+  createEvidence,
+  type Evidence,
+  type EvidenceSubjectTarget,
+} from "../../domain/evidence.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import { addressedValue } from "../../contracts/toolOutputSchemaPrimitives.js";
 import {
@@ -47,6 +51,12 @@ export class CythonExtensionInspectionService {
       return err(new AnalysisCancelledError(OPERATION));
     const names = parseInventory("list_names", namesExecution.value.result);
     if (!names.ok) return names;
+    const namesSubject = validateSubject(
+      "list_names",
+      namesExecution.value.subject,
+      target,
+    );
+    if (!namesSubject.ok) return namesSubject;
 
     const stringsExecution = await analysis.execute(
       "list_strings",
@@ -61,6 +71,12 @@ export class CythonExtensionInspectionService {
       stringsExecution.value.result,
     );
     if (!strings.ok) return strings;
+    const stringsSubject = validateSubject(
+      "list_strings",
+      stringsExecution.value.subject,
+      target,
+    );
+    if (!stringsSubject.ok) return stringsSubject;
 
     const result = inspectCythonExtensionInventories({
       names: observations(names.value),
@@ -156,6 +172,23 @@ const parseInventory = (
         ),
       );
 };
+
+const validateSubject = (
+  operation: "list_names" | "list_strings",
+  subject: EvidenceSubjectTarget | null,
+  target: BinaryTarget,
+): Result<null, AnalysisOutputError> =>
+  subject === null ||
+  (subject.sha256 === target.sha256 &&
+    subject.format === target.format &&
+    (subject.architecture ?? null) === (target.architecture ?? null))
+    ? ok(null)
+    : err(
+        new AnalysisOutputError(
+          OPERATION,
+          `${operation} returned observations for a different target identity.`,
+        ),
+      );
 
 const observations = (
   values: z.infer<typeof inventorySchema>,

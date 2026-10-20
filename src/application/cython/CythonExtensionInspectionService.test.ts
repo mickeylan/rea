@@ -39,6 +39,8 @@ class RecordingAnalysis implements AnalysisOperationPort {
     readonly stringsProfile: ReturnType<
       typeof createAnalysisProfile
     > | null = profile,
+    readonly namesSubject: BinaryTarget | undefined = target,
+    readonly stringsSubject: BinaryTarget | undefined = target,
   ) {}
 
   execute(
@@ -57,7 +59,9 @@ class RecordingAnalysis implements AnalysisOperationPort {
               : { analysisProfile: this.namesProfile }),
             limitations: ["names limitation"],
             locations: [{ kind: "address", address: "0x1000" }],
-            subject: target,
+            ...(this.namesSubject === undefined
+              ? {}
+              : { subject: this.namesSubject }),
           }),
         ),
       );
@@ -70,7 +74,9 @@ class RecordingAnalysis implements AnalysisOperationPort {
             : { analysisProfile: this.stringsProfile }),
           limitations: ["strings limitation"],
           locations: [{ kind: "address", address: "0x2000" }],
-          subject: target,
+          ...(this.stringsSubject === undefined
+            ? {}
+            : { subject: this.stringsSubject }),
         }),
       ),
     );
@@ -86,6 +92,29 @@ const stringInventory = [
   { address: "0x2000", value: "package.module.Widget.build" },
   { address: "0x2010", value: "C:\\build\\module.pyx" },
 ];
+
+const expectSubjectMismatchRejected = async (
+  mismatch: "list_names" | "list_strings",
+  expectedCalls: readonly AnalysisOperation[],
+): Promise<void> => {
+  const otherTarget = { ...target, sha256: "b".repeat(64) };
+  const analysis = new RecordingAnalysis(
+    nameInventory,
+    stringInventory,
+    undefined,
+    profile,
+    profile,
+    mismatch === "list_names" ? otherTarget : target,
+    mismatch === "list_strings" ? otherTarget : target,
+  );
+  const result = await new CythonExtensionInspectionService().inspect(
+    analysis,
+    target,
+  );
+  expect(result.ok).toBe(false);
+  expect(analysis.calls).toEqual(expectedCalls);
+  if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
+};
 
 const expectProviderFailurePreserved = async (
   failingOperation: "list_names" | "list_strings",
@@ -194,6 +223,15 @@ describe("CythonExtensionInspectionService", () => {
     "preserves a typed $failingOperation provider failure",
     ({ failingOperation, expectedCalls }) =>
       expectProviderFailurePreserved(failingOperation, expectedCalls),
+  );
+
+  it.each([
+    { mismatch: "list_names", expectedCalls: ["list_names"] },
+    { mismatch: "list_strings", expectedCalls: ["list_names", "list_strings"] },
+  ] as const)(
+    "rejects a $mismatch subject bound to another target",
+    ({ mismatch, expectedCalls }) =>
+      expectSubjectMismatchRejected(mismatch, expectedCalls),
   );
 
   it("does not invoke provider primitives after prior cancellation", async () => {
