@@ -838,7 +838,18 @@ _reuse_flags(
 )
 ```
 
-`_signature` converts the selected frame view to float and downsamples it with `torch.nn.functional.interpolate(..., mode="area")` to a fixed module-owned spatial size. The exact indexing object and target dimensions remain unresolved; the result is a reduced tensor signature, not a scalar hash.
+`_signature` is now fully resolved:
+
+```python
+def _signature(frame):
+    return torch.nn.functional.interpolate(
+        frame[:1].float(),
+        size=(32, 32),
+        mode="area",
+    )
+```
+
+It retains only the first entry along dimension 0, converts it to float, and area-downsamples to `32 × 32`. The result is a reduced tensor signature, not a scalar hash.
 
 `_cache_hit` returns false when `previous is None`, tensor shapes differ, or `threshold <= 0`. Otherwise it transfers `previous` to `current.device` and `current.dtype`, computes:
 
@@ -929,7 +940,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 1. Recover malformed architecture/state-value error branches and exception identities.
 2. Recover exact malformed state-dictionary value filtering and error assembly.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
-4. Resolve `_signature` frame indexing/target size and streaming tuple elements 2–4; padding geometry is closed.
+4. Resolve streaming tuple elements 2–4; signature and padding geometry are closed.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
 
 ## Evidence identifiers
