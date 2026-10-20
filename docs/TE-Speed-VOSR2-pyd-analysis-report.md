@@ -824,7 +824,7 @@ It returns a two-element internal tuple containing the cropped tensor and the ef
 `_finish_batch(decoded, reference, settings, model)` performs the final public IMAGE projection. The recovered order is:
 
 ```python
-reference_downsample = _color_downsample(reference)
+reference_downsample = _color_downsample(settings)
 with _timed(model, "color"):
     aligned = decoded.to(
         device=reference.device,
@@ -844,6 +844,8 @@ with _timed(model, "d2h"):
 _flush(model)
 return output
 ```
+
+`_color_downsample(settings)` returns `4` only when `settings.color_alignment == "wavelet"`; all other modes return `1`. That value is passed as the `downsample` keyword to `apply_color_alignment`.
 
 Thus the final boundary converts NCHW to ComfyUI NHWC with `movedim(1, -1)`, bounds values to `[0, 1]`, materializes contiguous storage, transfers to CPU, flushes the model timing/lifecycle helper, and returns the tensor directly. The node wrapper is responsible for placing that tensor in its one-element ComfyUI tuple.
 
