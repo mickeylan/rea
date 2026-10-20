@@ -15,6 +15,7 @@ import { parseEvidence } from "../../../src/domain/evidence.js";
 import { ok } from "../../../src/domain/result.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { observed } from "../../fixtures/analysisExecution.js";
+import { advertisedMcpToolSchemas } from "../../fixtures/advertisedMcpTool.js";
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
@@ -82,6 +83,14 @@ it("inspects one admitted pyd target through MCP in the retained session", async
   if (!opened.ok) throw opened.error;
 
   const client = await connectSessionServer(session);
+  const schemas = await advertisedMcpToolSchemas(
+    client,
+    "inspect_cython_extension",
+  );
+  expect(schemas.ajv.validate(schemas.inputSchema, {})).toBe(true);
+  expect(schemas.ajv.validate(schemas.inputSchema, { unexpected: true })).toBe(
+    false,
+  );
 
   const response = await client.callTool({
     name: "inspect_cython_extension",
@@ -89,6 +98,10 @@ it("inspects one admitted pyd target through MCP in the retained session", async
   });
 
   expect(response.isError).not.toBe(true);
+  expect(
+    schemas.ajv.validate(schemas.outputSchema, response.structuredContent),
+    JSON.stringify(schemas.ajv.errors),
+  ).toBe(true);
   expect(response.structuredContent).toMatchObject({
     subject: {
       local_path: path,
