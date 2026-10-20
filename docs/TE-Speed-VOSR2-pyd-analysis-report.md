@@ -752,6 +752,32 @@ The five-element `_streaming_tiled` result is an internal调用约定, not the p
 
 `run_vosr2` unpacks all five and carries them independently into result assembly. Exact semantic names for elements 2–4 remain Unknown because the native locals are reused across phase and cache branches; they will not be labeled as cache-hit, tile-count, or batch-count values until their producing operations are fully traced.
 
+### Full-frame helper contracts
+
+The active full-frame route has the exact private signature:
+
+```python
+_full_frame(
+    model,
+    resized,
+    seed,
+    settings,
+    feature_cache=None,
+    reuse=None,
+    keep_cache=False,
+    dino_batch=None,
+)
+```
+
+The first four values are required and all eight may be populated positionally or by keyword. Its associated VAE helpers are:
+
+```python
+_encode_resized(model, resized, settings)
+_decode_restored(model, restored, mean, std, h, w, settings)
+```
+
+All parameters of those two helpers are required. This separates three phases at the private boundary: encode normalized/resized input, run full-frame restoration with optional feature-cache reuse, then decode/crop using the retained `mean`, `std`, `h`, and `w` observations.
+
 ### Temporal-cache decision helpers
 
 The exact private helper signatures are:
