@@ -265,6 +265,7 @@ it("fails fast on malformed names without requesting strings", async () => {
   );
   expect(error.code).toBe("unreadable_output");
   expect(calls).toEqual(["health", "list_names"]);
+  expect(session.exportEvidenceBundle().records).toEqual([]);
 });
 
 it("stops between inventories on MCP cancellation without retaining partial Evidence", async () => {
@@ -363,6 +364,7 @@ it("rejects inventories produced under different analysis profiles", async () =>
   );
   expect(error.code).toBe("unreadable_output");
   expect(calls).toEqual(["health", "list_names", "list_strings"]);
+  expect(session.exportEvidenceBundle().records).toEqual([]);
 });
 
 it("rejects a native PE target that is not a pyd before inventory work", async () => {
@@ -398,6 +400,7 @@ it("rejects a native PE target that is not a pyd before inventory work", async (
     details: { path },
   });
   expect(calls).toEqual(["health"]);
+  expect(session.exportEvidenceBundle().records).toEqual([]);
 });
 
 it("fails closed before provider execution without an active target", async () => {
