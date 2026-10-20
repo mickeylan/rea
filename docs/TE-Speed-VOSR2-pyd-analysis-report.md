@@ -770,7 +770,19 @@ _full_frame(
 )
 ```
 
-The first four values are required and all eight may be populated positionally or by keyword. Its associated VAE helpers are:
+The first four values are required and all eight may be populated positionally or by keyword. The recovered full-frame phase order is:
+
+1. enter `_timed(model, "vae_encode")`;
+2. square-pad and multiple-pad the resized input, then VAE-encode it;
+3. enter `_timed(model, "dino")`;
+4. if reuse was not requested, allocate a per-frame `None` list, merge any cached feature entries, and calculate missing DINO features with a bounded `max_batch=dino_batch` call;
+5. enter `_timed(model, "dit")` and invoke `model.one_step(...)` with the latent, deterministic seed-derived noise/state, and the assembled DINO features;
+6. split the returned feature batch for cache retention according to `keep_cache`;
+7. flush, prepare VAE decoding, decode the restored latent, and return the decoded result plus updated cache/settings observations.
+
+This proves that temporal reuse bypasses DINO feature extraction selectively; it does not bypass the DiT `one_step` restoration itself.
+
+Its associated VAE helpers are:
 
 ```python
 _encode_resized(model, resized, settings)
