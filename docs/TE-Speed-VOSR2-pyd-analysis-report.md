@@ -802,6 +802,15 @@ For `memory_policy == "staged"`, the restored tensor is transferred to CPU befor
 
 The torch-compile path is fail-open for inference: a compiled `forward_flexible` runtime failure is logged, `_compile_enabled` is set to false, `_compile_fallback` is set to true, and the same five inputs are retried through eager `forward_flexible`. Other setup/conversion failures propagate. When the memory policy is `staged`, the resulting velocity tensor is moved to CPU before return; otherwise it remains on the active device.
 
+The deterministic noise boundary is exactly `_noise(shape, seed, device, dtype)`, with all four parameters required. It constructs a `torch.Generator` using a fixed module-owned device value, coerces non-exact integer seeds through `int`/`PyNumber_Long`, and calls:
+
+```python
+base = torch.randn(shape, generator=generator.manual_seed(int(seed)), dtype=torch.float32)
+return base.to(device=device, dtype=dtype)
+```
+
+The generator's fixed device string is not yet structurally decoded and remains Unknown; importantly, requested inference `device` and `dtype` are applied only after the float32 random tensor is created. Seed-conversion, generator, allocation, and transfer errors propagate rather than selecting another random source.
+
 Its associated VAE helpers are:
 
 ```python
