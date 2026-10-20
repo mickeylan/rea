@@ -116,6 +116,25 @@ const expectSubjectMismatchRejected = async (
   if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
 };
 
+const expectRelocatedSubjectAccepted = async (): Promise<void> => {
+  const relocated = { ...target, path: "D:\\relocated\\example.pyd" };
+  const analysis = new RecordingAnalysis(
+    nameInventory,
+    stringInventory,
+    undefined,
+    profile,
+    profile,
+    relocated,
+    relocated,
+  );
+  const result = await new CythonExtensionInspectionService().inspect(
+    analysis,
+    target,
+  );
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.value.subject?.local_path).toBe(target.path);
+};
+
 const expectProviderFailurePreserved = async (
   failingOperation: "list_names" | "list_strings",
   expectedCalls: readonly AnalysisOperation[],
@@ -175,6 +194,11 @@ describe("CythonExtensionInspectionService", () => {
     expect(result.value.limitations).toContain("names limitation");
     expect(result.value.limitations).toContain("strings limitation");
   });
+
+  it(
+    "accepts relocated provider subjects with the same immutable identity",
+    expectRelocatedSubjectAccepted,
+  );
 
   it("rejects targets outside the native .pyd PE boundary before provider work", async () => {
     const analysis = new RecordingAnalysis(nameInventory, stringInventory);
