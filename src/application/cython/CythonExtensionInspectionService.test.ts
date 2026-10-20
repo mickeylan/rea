@@ -305,3 +305,33 @@ describe("CythonExtensionInspectionService", () => {
     if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
   });
 });
+
+describe("Cython extension provider provenance", () => {
+  it("rejects inventories from different providers without profiles", async () => {
+    const otherProvider = { id: "other", name: "Other", version: "1" };
+    const calls: AnalysisOperation[] = [];
+    const analysis: AnalysisOperationPort = {
+      execute: (operation) => {
+        calls.push(operation);
+        return Promise.resolve(
+          ok(
+            createAnalysisExecution(
+              operation === "list_names" ? nameInventory : stringInventory,
+              operation === "list_names" ? provider : otherProvider,
+              { subject: target },
+            ),
+          ),
+        );
+      },
+    };
+
+    const result = await new CythonExtensionInspectionService().inspect(
+      analysis,
+      target,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(calls).toEqual(["list_names", "list_strings"]);
+    if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
+  });
+});

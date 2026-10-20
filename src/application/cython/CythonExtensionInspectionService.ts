@@ -4,6 +4,7 @@ import { z } from "zod";
 import type {
   AnalysisOperationPort,
   ExecutionOptions,
+  ProviderIdentity,
 } from "../AnalysisProvider.js";
 import type { AnalysisError } from "../../domain/analysisErrorBase.js";
 import {
@@ -85,6 +86,18 @@ export class CythonExtensionInspectionService {
     });
     const namesProfile = namesExecution.value.analysisProfile;
     const stringsProfile = stringsExecution.value.analysisProfile;
+    if (
+      !sameProvider(
+        namesExecution.value.provider,
+        stringsExecution.value.provider,
+      )
+    )
+      return err(
+        new AnalysisOutputError(
+          OPERATION,
+          "Provider inventories were produced by different provider identities.",
+        ),
+      );
     if (
       namesProfile !== undefined &&
       stringsProfile !== undefined &&
@@ -189,6 +202,14 @@ const validateSubject = (
           `${operation} returned observations for a different target identity.`,
         ),
       );
+
+const sameProvider = (
+  left: ProviderIdentity,
+  right: ProviderIdentity,
+): boolean =>
+  left.id === right.id &&
+  left.name === right.name &&
+  left.version === right.version;
 
 const observations = (
   values: z.infer<typeof inventorySchema>,
