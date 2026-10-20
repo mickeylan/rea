@@ -7,7 +7,8 @@ import type {
   AnalysisOperationPort,
   ExecutionOptions,
 } from "../AnalysisProvider.js";
-import { ok } from "../../domain/result.js";
+import { AnalysisOutputError } from "../../domain/analysisErrorCore.js";
+import { err, ok } from "../../domain/result.js";
 import type { BinaryTarget } from "../../domain/binaryTargetTypes.js";
 import { CythonExtensionInspectionService } from "./CythonExtensionInspectionService.js";
 
@@ -86,6 +87,36 @@ const stringInventory = [
   { address: "0x2010", value: "C:\\build\\module.pyx" },
 ];
 
+const expectProviderFailurePreserved = async (
+  failingOperation: "list_names" | "list_strings",
+  expectedCalls: readonly AnalysisOperation[],
+): Promise<void> => {
+  const failure = new AnalysisOutputError(
+    failingOperation,
+    "fixture provider failure",
+  );
+  const calls: AnalysisOperation[] = [];
+  const analysis: AnalysisOperationPort = {
+    execute: (operation) => {
+      calls.push(operation);
+      if (operation === failingOperation) return Promise.resolve(err(failure));
+      return Promise.resolve(
+        ok(
+          createAnalysisExecution(nameInventory, provider, {
+            analysisProfile: profile,
+          }),
+        ),
+      );
+    },
+  };
+  const result = await new CythonExtensionInspectionService().inspect(
+    analysis,
+    target,
+  );
+  expect(result).toEqual(err(failure));
+  expect(calls).toEqual(expectedCalls);
+};
+
 describe("CythonExtensionInspectionService", () => {
   it("composes one admitted session into derived Evidence", async () => {
     const analysis = new RecordingAnalysis(nameInventory, stringInventory);
@@ -152,6 +183,18 @@ describe("CythonExtensionInspectionService", () => {
     expect(analysis.calls).toEqual(["list_names", "list_strings"]);
     if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
   });
+
+  it.each([
+    { failingOperation: "list_names", expectedCalls: ["list_names"] },
+    {
+      failingOperation: "list_strings",
+      expectedCalls: ["list_names", "list_strings"],
+    },
+  ] as const)(
+    "preserves a typed $failingOperation provider failure",
+    ({ failingOperation, expectedCalls }) =>
+      expectProviderFailurePreserved(failingOperation, expectedCalls),
+  );
 
   it("does not invoke provider primitives after prior cancellation", async () => {
     const controller = new AbortController();
