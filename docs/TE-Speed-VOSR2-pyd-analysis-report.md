@@ -392,6 +392,19 @@ Checkpoint mismatch for <module-name>: missing=<missing>, unexpected=<unexpected
 
 Using `strict=False` internally is deliberate: compatibility is still strict at the helper boundary because any reported mismatch is converted into the explicit load error after prefix normalization and bookkeeping-key removal.
 
+### VAE construction
+
+The VAE is not manually reconstructed from separate configuration and weight files by `load_model`. It uses the fixed bundle directory:
+
+```python
+vae_dir = bundle / "Qwen-Image-vae-2d"
+vae_model = AutoencoderKLQwenImage2D.from_pretrained(str(vae_dir))
+vae_model = vae_model.eval()
+vae_model = vae_model.float()
+```
+
+No keyword arguments are supplied to `from_pretrained`. Configuration and `diffusion_pytorch_model.safetensors` interpretation are therefore delegated to `AutoencoderKLQwenImage2D.from_pretrained`; this function does not independently validate those two files before the call. Failures from path conversion, construction, `eval()`, or `float()` propagate through the common `load_model` failure path.
+
 After the DiT, VAE, and DINO model objects and their state have been prepared, `load_model` imports `comfy.model_patcher.ModelPatcher` and constructs three independent patchers:
 
 ```python
@@ -734,7 +747,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Recover exact VAE directory/config loading and construction behavior.
+1. Recover exact DINO construction, state-loading, and dtype/device transitions.
 2. Recover malformed architecture/state-value error branches and exception identities.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
