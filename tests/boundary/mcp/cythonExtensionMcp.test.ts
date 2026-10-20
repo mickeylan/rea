@@ -7,6 +7,7 @@ import { afterEach, expect, it } from "vitest";
 import {
   createAnalysisExecution,
   type AnalysisClient,
+  type AnalysisProvider,
 } from "../../../src/application/AnalysisProvider.js";
 import { createAnalysisProfile } from "../../../src/domain/analysisProfile.js";
 import { analysisErrorProjectionSchema } from "../../../src/contracts/errorSchemas.js";
@@ -131,6 +132,81 @@ it("inspects one admitted pyd target through MCP in the retained session", async
       .exportEvidenceBundle()
       .records.some((record) => record.evidence_id === evidence.evidence_id),
   ).toBe(true);
+});
+
+it("records a replayable workflow snapshot for snapshot-capable providers", async () => {
+  const directory = await createTestTempDirectory("rea-cython-mcp-snapshot-");
+  const path = join(directory, "snapshot.pyd");
+  await writeFile(path, pe(0x8664, 64, 0x2002));
+  const identity = { id: "fixture", name: "Fixture", version: "1" } as const;
+  const profile = createAnalysisProfile(identity, { fixture: true });
+  const provider: AnalysisProvider = {
+    identity: () => identity,
+    resolveAnalysisProfile: () => Promise.resolve(ok({ profile })),
+    capabilities: () =>
+      (["list_names", "list_strings"] as const).map((operation) => ({
+        operation,
+        provider: identity,
+        available: true,
+        reason: null,
+        cachePolicy: "snapshot" as const,
+        effects: {
+          mutatesArtifact: false,
+          launchesProcess: false,
+          mayShowUi: false,
+          mayAccessNetwork: false,
+          mayWriteFilesystem: false,
+          changesPermissions: false,
+          requiresRoot: false,
+        },
+        limitations: [],
+      })),
+    createClient: () => ({
+      execute: (operation) =>
+        Promise.resolve(
+          ok(
+            createAnalysisExecution(
+              operation === "list_names"
+                ? [{ address: "0x1000", value: "PyInit_snapshot" }]
+                : operation === "list_strings"
+                  ? [{ address: "0x2000", value: "__pyx_snapshot" }]
+                  : null,
+              identity,
+              { analysisProfile: profile },
+            ),
+          ),
+        ),
+      close: () => Promise.resolve(ok(null)),
+    }),
+  };
+  const session = createTestBinarySession(provider);
+  const opened = await session.open(path);
+  if (!opened.ok) throw opened.error;
+  const client = await connectSessionServer(session);
+
+  const response = await client.callTool({
+    name: "inspect_cython_extension",
+    arguments: {},
+  });
+
+  expect(response.isError).not.toBe(true);
+  const evidence = parseEvidence(response.structuredContent);
+  const snapshot = session.exportAnalysisSnapshot();
+  if (!snapshot.ok) throw snapshot.error;
+  expect(snapshot.value.workflow_entries).toContainEqual(
+    expect.objectContaining({
+      operation: "inspect_cython_extension",
+      parameters: {},
+      execution: expect.objectContaining({
+        provider: {
+          id: "rea-workflow",
+          name: expect.any(String),
+          version: "1",
+        },
+        result: evidence.normalized_result,
+      }),
+    }),
+  );
 });
 
 it("rejects unknown input fields before provider execution", async () => {
