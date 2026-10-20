@@ -602,9 +602,21 @@ it("records and replays Cython extension workflow Evidence", async () => {
   expect(first).toMatchObject({
     operation: "inspect_cython_extension",
     provider: { id: "rea-workflow" },
+    analysis_profile: { parameters: { workflow_revision: 2 } },
     normalized_result: {
       python_extension: { status: "confirmed", module_names: ["fixture"] },
       cython: { status: "detected" },
+      coverage: {
+        projection_complete: true,
+        omitted: {
+          initializers: 0,
+          module_names: 0,
+          cython_markers: 0,
+          qualified_name_candidates: 0,
+          source_path_observations: 0,
+          cpython_type_hints: 0,
+        },
+      },
     },
   });
   const starts = [...fixture.starts];

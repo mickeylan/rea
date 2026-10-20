@@ -180,7 +180,7 @@ describe("CythonExtensionInspectionService", () => {
     expect(result.value.confidence).toBe("derived");
     expect(result.value.provider.id).toBe("rea-workflow");
     expect(result.value.analysis_profile?.parameters).toMatchObject({
-      workflow_revision: 1,
+      workflow_revision: 2,
     });
     expect(result.value.normalized_result).toMatchObject({
       python_extension: { status: "confirmed", module_names: ["example"] },
