@@ -405,6 +405,23 @@ vae_model = vae_model.float()
 
 No keyword arguments are supplied to `from_pretrained`. Configuration and `diffusion_pytorch_model.safetensors` interpretation are therefore delegated to `AutoencoderKLQwenImage2D.from_pretrained`; this function does not independently validate those two files before the call. Failures from path conversion, construction, `eval()`, or `float()` propagate through the common `load_model` failure path.
 
+### DINO construction
+
+The DINO encoder follows this exact sequence:
+
+```python
+dino_model = build_dinov2_vitl14()
+dino_model = dino_model.eval()
+dino_path = _find_dino(bundle)
+dino_state = _load_state(dino_path)
+_strict(dino_model, dino_state, dino_path)
+dino_model.to(compute_dtype)
+```
+
+`build_dinov2_vitl14` receives no arguments. The dtype is the same `compute_dtype` returned earlier by `_dtype(dtype_name, load_device)`; no explicit device is passed in this `to(...)` call. Device residency is deferred to its `ModelPatcher`.
+
+After DiT, VAE, and DINO preparation, `load_model` iterates all three model objects and calls `parameter.requires_grad_(False)` for every parameter. A failure while obtaining or traversing any parameter iterator aborts construction rather than returning a partially frozen owner.
+
 After the DiT, VAE, and DINO model objects and their state have been prepared, `load_model` imports `comfy.model_patcher.ModelPatcher` and constructs three independent patchers:
 
 ```python
@@ -747,7 +764,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Recover exact DINO construction, state-loading, and dtype/device transitions.
+1. Recover exact DiT constructor arguments, dtype transition, and state-loading order.
 2. Recover malformed architecture/state-value error branches and exception identities.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
