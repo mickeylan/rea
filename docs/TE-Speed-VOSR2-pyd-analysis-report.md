@@ -702,8 +702,9 @@ The first five parameters are required; the final three may be supplied position
 The implementation validates the ComfyUI image boundary before inference:
 
 - input must have shape `[B, H, W, C]`, otherwise the error begins `TE-Speed-VOSR2 expects IMAGE tensor [B, H, W, C], got shape `;
-- the last dimension must contain RGB or RGBA channels, otherwise the error is `TE-Speed-VOSR2 supports RGB/RGBA IMAGE input, got <n> channels`;
-- RGBA handling and exact alpha disposition are still being traced.
+- the last dimension must contain exactly 3 or 4 channels, otherwise the error is `TE-Speed-VOSR2 supports RGB/RGBA IMAGE input, got <n> channels`;
+- four-channel input is replaced by a channel slice before device/model preparation, while three-channel input is retained directly. The alpha channel is therefore discarded rather than restored or composited by the inference workflow;
+- the internal VAE path subsequently uses channel-first tensors and the surrounding workflow owns the channel-last/channel-first conversion.
 
 Before choosing an inference route it invokes `_ensure_speed_runtime()` and `_enable_fast_math()`. It resolves the model memory policy, uses the model-level value when the supplied setting is `"auto"`, and resolves a remaining `"auto"` value to `"resident"`. If the model implements `set_memory_policy`, that method is called; otherwise the `memory_policy` attribute is assigned directly.
 
