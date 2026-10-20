@@ -113,6 +113,30 @@ it("inspects one admitted pyd target through MCP in the retained session", async
   expect(calls).toEqual(["health", "list_names", "list_strings"]);
 });
 
+it("rejects unknown input fields before provider execution", async () => {
+  const calls: string[] = [];
+  const session = createTestBinarySession(
+    () =>
+      ({
+        execute: (operation) => {
+          calls.push(operation);
+          return Promise.resolve(observed([]));
+        },
+        close: () => Promise.resolve(ok(null)),
+      }) satisfies AnalysisClient,
+  );
+  const client = await connectSessionServer(session);
+
+  const response = await client.callTool({
+    name: "inspect_cython_extension",
+    arguments: { unexpected: true },
+  });
+
+  expect(response.isError).toBe(true);
+  expect(response.structuredContent).toBeUndefined();
+  expect(calls).toEqual([]);
+});
+
 it("fails fast on malformed names without requesting strings", async () => {
   const directory = await createTestTempDirectory("rea-cython-mcp-malformed-");
   const path = join(directory, "malformed.pyd");
