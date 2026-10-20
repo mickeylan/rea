@@ -11,6 +11,7 @@ import {
 import { createAnalysisProfile } from "../../../src/domain/analysisProfile.js";
 import { analysisErrorProjectionSchema } from "../../../src/contracts/errorSchemas.js";
 import { pe } from "../../../src/domain/binaryTarget.fixture.js";
+import { parseEvidence } from "../../../src/domain/evidence.js";
 import { ok } from "../../../src/domain/result.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { observed } from "../../fixtures/analysisExecution.js";
@@ -111,6 +112,12 @@ it("inspects one admitted pyd target through MCP in the retained session", async
     },
   });
   expect(calls).toEqual(["health", "list_names", "list_strings"]);
+  const evidence = parseEvidence(response.structuredContent);
+  expect(
+    session
+      .exportEvidenceBundle()
+      .records.some((record) => record.evidence_id === evidence.evidence_id),
+  ).toBe(true);
 });
 
 it("rejects unknown input fields before provider execution", async () => {
