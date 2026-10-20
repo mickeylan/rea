@@ -364,7 +364,20 @@ layer_dinov2b_list
 
 ### DiT construction
 
-`compute_dtype` is resolved first by `_dtype(dtype_name, load_device)`. `LightningDiT` is then constructed entirely with keyword arguments:
+`compute_dtype` is resolved first by `_dtype(dtype_name, load_device)`:
+
+```python
+if dtype_name == "fp16":
+    compute_dtype = torch.float16
+elif dtype_name == "bf16":
+    compute_dtype = torch.bfloat16
+else:
+    compute_dtype = comfy.model_management.unet_dtype(device=load_device)
+```
+
+Thus only the exact strings `"fp16"` and `"bf16"` force a dtype. `"auto"` and every other Unicode value use ComfyUI's device-aware `unet_dtype`; unknown names are not rejected at this helper boundary. Both `value` and `device` are required arguments.
+
+`LightningDiT` is then constructed entirely with keyword arguments:
 
 ```python
 LightningDiT(
@@ -803,8 +816,8 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 
 ## Next analysis steps
 
-1. Recover `_dtype` accepted names, fallbacks, and exact dtype selection.
-2. Recover malformed architecture/state-value error branches and exception identities.
+1. Recover malformed architecture/state-value error branches and exception identities.
+2. Resolve the exact `_DINO_FILES` candidate order.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
 4. Recover streaming cache signatures and five-element tiled return semantics.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
