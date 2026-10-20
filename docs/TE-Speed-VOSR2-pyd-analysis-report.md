@@ -819,7 +819,33 @@ The helper returns the latent data together with `mean`, `std`, and the retained
 decoded[:, :, :h, :w]
 ```
 
-It returns a two-element internal tuple containing the cropped tensor and the effective settings object. This proves channel-first spatial processing inside the VAE helpers; conversion back to ComfyUI’s channel-last IMAGE layout belongs to the surrounding inference workflow.
+It returns a two-element internal tuple containing the cropped tensor and the effective settings object. This proves channel-first spatial processing inside the VAE helpers.
+
+`_finish_batch(decoded, reference, settings, model)` performs the final public IMAGE projection. The recovered order is:
+
+```python
+reference_downsample = _color_downsample(reference)
+with _timed(model, "color"):
+    aligned = decoded.to(
+        device=reference.device,
+        dtype=torch.float32,
+    )
+    aligned = (aligned.clamp(-1, 1) + 1) / 2
+    aligned = apply_color_alignment(
+        aligned,
+        reference,
+        settings.color_alignment,
+        downsample=reference_downsample,
+    )
+
+with _timed(model, "d2h"):
+    output = aligned.movedim(1, -1).clamp(0, 1).contiguous().cpu()
+
+_flush(model)
+return output
+```
+
+Thus the final boundary converts NCHW to ComfyUI NHWC with `movedim(1, -1)`, bounds values to `[0, 1]`, materializes contiguous storage, transfers to CPU, flushes the model timing/lifecycle helper, and returns the tensor directly. The node wrapper is responsible for placing that tensor in its one-element ComfyUI tuple.
 
 ### Temporal-cache decision helpers
 
