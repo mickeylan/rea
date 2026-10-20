@@ -268,6 +268,47 @@ it("fails fast on malformed names without requesting strings", async () => {
   expect(session.exportEvidenceBundle().records).toEqual([]);
 });
 
+it("rejects malformed strings without retaining partial Evidence", async () => {
+  const directory = await createTestTempDirectory(
+    "rea-cython-mcp-malformed-strings-",
+  );
+  const path = join(directory, "malformed-strings.pyd");
+  await writeFile(path, pe(0x8664, 64, 0x2002));
+  const calls: string[] = [];
+  const session = createTestBinarySession(
+    () =>
+      ({
+        execute: (operation) => {
+          calls.push(operation);
+          const value =
+            operation === "list_names"
+              ? [{ address: "0x1000", value: "PyInit_malformed_strings" }]
+              : operation === "list_strings"
+                ? { invalid: true }
+                : null;
+          return Promise.resolve(observed(value));
+        },
+        close: () => Promise.resolve(ok(null)),
+      }) satisfies AnalysisClient,
+  );
+  const opened = await session.open(path);
+  if (!opened.ok) throw opened.error;
+  const client = await connectSessionServer(session);
+
+  const response = await client.callTool({
+    name: "inspect_cython_extension",
+    arguments: {},
+  });
+
+  expect(response.isError).toBe(true);
+  const error = analysisErrorProjectionSchema.parse(
+    JSON.parse(responseText(response)).error,
+  );
+  expect(error.code).toBe("unreadable_output");
+  expect(calls).toEqual(["health", "list_names", "list_strings"]);
+  expect(session.exportEvidenceBundle().records).toEqual([]);
+});
+
 it("stops between inventories on MCP cancellation without retaining partial Evidence", async () => {
   const directory = await createTestTempDirectory("rea-cython-mcp-cancel-");
   const path = join(directory, "cancelled.pyd");
