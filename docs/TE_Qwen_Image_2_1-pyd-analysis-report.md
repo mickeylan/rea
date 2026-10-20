@@ -1,6 +1,6 @@
 # TE_Qwen Image 2.1 `.pyd` analysis report
 
-> Updated: 2026-10-16
+> Updated: 2026-10-20
 > Target: `TE_Qwen_Image_2_1_Prompt_Enhancer.pyd`
 > SHA-256: `17aa8af94035109e882fc4477f21e527d0fef519d38c98c3a730fcda62a42b42`
 > Provider: Ghidra 12.1.4 through REA
@@ -22,7 +22,7 @@ The public `inspect_cython_extension` workflow reported:
 - 87 qualified-name candidates, 13 Cython markers, and one retained source-path observation.
 - Cython runtime identity candidate `_cython_3_1_2limited_fastcallnofinalize`.
 - Retained build coordinate `F:\ComfyUI_portable_TE_v260130\ComfyUI\custom_nodes\TE_image\source_py_backup\TE_Qwen_Image_2_1_Prompt_Enhancer.c`.
-- Re-verification on 2026-10-15 produced derived Evidence `ev_2c00ace462678bcea9d66098645aca58ce9905aa81806a9f3e3c3b0a9e9555f6` with `workflow_revision: 1`, complete inventory coverage, and the target digest above.
+- Re-verification on 2026-10-20, after target-identity and inventory-coverage hardening, produced derived Evidence `ev_fc164e0a028e2baca4c4c30c9026dd96ad8c5423d4669643d3694cc407da1afa` with `workflow_revision: 1`, complete inventory coverage, and the target digest above.
 
 The target contains the qualified class and method observations:
 
@@ -256,6 +256,7 @@ A retained-session analysis of the helper boundaries established:
   ```
 
   For the official-PE route it instead removes conflicting language rules, appends `QWEN_OFFICIAL_PE_POLICY`, and selects one exact JSON-output rule. The Chinese form requires all descriptive prose in `rewritten_prompt` to be Chinese while preserving user-visible text, proper nouns, and brand names; the English form imposes the equivalent English requirement. Both require a single-line JSON object and immediate termination after the closing `}`. This branch does not append the local/API pure-text mode policy.
+
 - `_normalize_seed` is implemented at `FUN_1800042c0` (1,081 bytes) and accepts exactly one argument, `seed_value`, positionally or by keyword. The Cython runtime type check requires a Python integer; an exact `int` is retained, while an integer subtype is normalized through `PyNumber_Long`. At `0x1800045c4-0x1800045d4`, the converted value is compared with initialized integer global `DAT_180051bd0 = 0` using rich-comparison opcode `5` (`Py_GE`). A true comparison returns the normalized integer; a false comparison returns Python `None`. Thus the behavioral contract is `seed if seed >= 0 else None`: zero and positive values are retained, negative values select `None`. Conversion failures are matched against initialized `TypeError` and `ValueError`; either is cleared and returns `None`, while nonmatching exceptions, comparison failures, and truth-test failures propagate through native `NULL`.
 - `enable_thinking` at the queried reference belongs to nested `_create_qwen38_text_handler.qwen38_formatter`, `FUN_18000cdc0` (1,113 bytes). Its observed call inputs include `reasoning_effort`, `enable_thinking`, `preserve_thinking`, and `formatter`. The body constructs a keyword dictionary and invokes the retained formatter callable. This is Qwen 3.8 formatting behavior, not proof of the top-level input default.
 
