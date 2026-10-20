@@ -779,7 +779,29 @@ _decode_restored(model, restored, mean, std, h, w, settings)
 
 All parameters of those two helpers are required. This separates three phases at the private boundary: encode normalized/resized input, run full-frame restoration with optional feature-cache reuse, then decode/crop using the retained `mean`, `std`, `h`, and `w` observations.
 
-`_encode_resized` runs inside `_timed(model, "vae_encode")`. It first calls `_pad_multiple(resized)`, retaining the original spatial dimensions, then calls the model’s VAE encode boundary with the padded tensor plus `settings.vae_tile_size` and `settings.vae_tile_overlap`. That call must return exactly three values:
+`_encode_resized` runs inside `_timed(model, "vae_encode")`. It first calls `_pad_multiple(resized)`, retaining the original spatial dimensions, then calls the model’s VAE encode boundary with the padded tensor plus `settings.vae_tile_size` and `settings.vae_tile_overlap`. The module constants are:
+
+```python
+AE_FACTOR = 8
+DIT_PATCH = 2
+PAD_MULTIPLE = AE_FACTOR * DIT_PATCH  # 16
+```
+
+`_pad_multiple(x, multiple=PAD_MULTIPLE)` requires an NCHW tensor, unpacks exactly four shape dimensions, and computes:
+
+```python
+pad_h = (-h) % multiple
+pad_w = (-w) % multiple
+padded = torch.nn.functional.pad(
+    x,
+    (0, pad_w, 0, pad_h),
+    mode="reflect",
+)
+```
+
+Padding is therefore right/bottom only; batch and channel dimensions are unchanged. It returns the padded tensor together with the original `h` and `w`. `_latent_side(px)` rounds `px` upward to `PAD_MULTIPLE` and then divides by `AE_FACTOR`, equivalent to `ceil(px / 16) * 2` for integers.
+
+The VAE encode call must return exactly three values:
 
 ```python
 latent, mean, std = model.encode(
@@ -907,7 +929,7 @@ It also states that `dinov2_vitl14_pretrain.pth` is accepted. These are package-
 1. Recover malformed architecture/state-value error branches and exception identities.
 2. Recover exact malformed state-dictionary value filtering and error assembly.
 3. Resolve whether `_resident_ready` is a compatibility remnant or used outside this compiled module.
-4. Resolve `_signature` frame indexing/target size and streaming tuple elements 2–4.
+4. Resolve `_signature` frame indexing/target size and streaming tuple elements 2–4; padding geometry is closed.
 5. Trace DiT OOM retry ordering and cleanup/error precedence.
 
 ## Evidence identifiers
