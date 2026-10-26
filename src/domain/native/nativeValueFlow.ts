@@ -3,7 +3,7 @@ import { z } from "zod";
 /** A decompiler p-code varnode location or literal value. */
 export const nativeVarnodeSchema = z.strictObject({
   kind: z.enum(["constant", "address", "register", "unique", "other"]),
-  size_bytes: z.number().int().nonnegative(),
+  size_bytes: z.int().nonnegative(),
   location: z.string().nullable(),
   constant_hex: z
     .string()
@@ -15,7 +15,7 @@ export const nativeVarnodeSchema = z.strictObject({
 export const nativePcodeOperationSchema = z.strictObject({
   id: z.string().min(1),
   address: z.string().min(1),
-  sequence: z.number().int().nonnegative(),
+  sequence: z.int().nonnegative(),
   opcode: z.string().min(1),
   is_dead: z.boolean(),
   block_membership: z.enum(["member", "detached", "unavailable"]),
@@ -37,7 +37,7 @@ export const nativePcodeBlockSchema = z.strictObject({
 export const nativePcodeDefUseSchema = z.strictObject({
   definition: z.string().min(1),
   use: z.string().min(1),
-  input_index: z.number().int().nonnegative(),
+  input_index: z.int().nonnegative(),
 });
 
 /** Memory and branch operations as directly named by Ghidra p-code. */
@@ -51,8 +51,8 @@ export const nativePcodeEffectSchema = z.strictObject({
     "direct_call",
     "indirect_call",
   ]),
-  operand_input: z.number().int().nonnegative().nullable(),
-  value_input: z.number().int().nonnegative().nullable(),
+  operand_input: z.int().nonnegative().nullable(),
+  value_input: z.int().nonnegative().nullable(),
   branch_target_block: z.string().min(1).nullable(),
   branch_fallthrough_block: z.string().min(1).nullable(),
 });
@@ -68,24 +68,24 @@ export const nativeValueFlowSchema = z.discriminatedUnion("available", [
     effects: z.array(nativePcodeEffectSchema),
     parameters: z.array(
       z.strictObject({
-        ordinal: z.number().int().nonnegative(),
+        ordinal: z.int().nonnegative(),
         name: z.string(),
         data_type: z.string(),
       }),
     ),
     parameter_uses: z.array(
       z.strictObject({
-        ordinal: z.number().int().nonnegative(),
+        ordinal: z.int().nonnegative(),
         use: z.string(),
-        input_index: z.number().int().nonnegative(),
+        input_index: z.int().nonnegative(),
       }),
     ),
     semantic_roots_total: z.number().int().nonnegative(),
     semantic_roots_retained: z.number().int().nonnegative(),
     truncated: z.boolean(),
-    omitted_operations_lower_bound: z.number().int().nonnegative(),
-    known_omitted_inputs: z.number().int().nonnegative(),
-    known_omitted_edges: z.number().int().nonnegative(),
+    omitted_operations_lower_bound: z.int().nonnegative(),
+    known_omitted_inputs: z.int().nonnegative(),
+    known_omitted_edges: z.int().nonnegative(),
     limitations: z.array(z.string().min(1)),
   }),
   z.strictObject({

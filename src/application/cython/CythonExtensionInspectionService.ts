@@ -26,10 +26,8 @@ import {
 } from "../../domain/evidence.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import { addressedValue } from "../../contracts/toolOutputSchemaPrimitives.js";
-import {
-  REA_WORKFLOW_PROVIDER,
-  workflowAnalysisProfile,
-} from "../InvestigationProviders.js";
+import { REA_WORKFLOW_PROVIDER } from "../../domain/investigationProviders.js";
+import { workflowAnalysisProfile } from "../WorkflowAnalysisProfile.js";
 
 const OPERATION = "inspect_cython_extension";
 const inventorySchema = z.array(addressedValue);
