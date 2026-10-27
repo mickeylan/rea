@@ -1,3 +1,4 @@
+import { projectCliAnalysisResult } from "./projectCliAnalysisResult.js";
 import { z } from "incur";
 import { realpath, stat } from "node:fs/promises";
 import { findAppBundleResourceRoot } from "../application/AppBundleExecutable.js";
@@ -167,7 +168,7 @@ const registerOverviewCommands = (
           "binary_overview",
           {},
           directAnalysisOptionsFromCli(logger, options),
-        );
+        ).then(projectCliAnalysisResult);
       });
     },
   });
@@ -184,7 +185,7 @@ const registerOverviewCommands = (
           "binary_overview",
           {},
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };
@@ -245,7 +246,7 @@ const registerDecompileCommand = (
             ),
           },
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };
@@ -322,7 +323,7 @@ const registerXrefsCommand = (
             ),
           },
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };
@@ -372,7 +373,7 @@ const registerTraceCommand = (
             case_sensitive: options.caseSensitive,
           },
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };
@@ -476,7 +477,7 @@ const registerInstructionsCommand = (
             ),
           },
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };
@@ -537,7 +538,7 @@ const registerSearchCommand = (
             case_sensitive: options.caseSensitive,
           },
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };

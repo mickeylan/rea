@@ -51,7 +51,7 @@ it("dispatches Cython extension inspection with exact native-open choices", asyn
   const runDirectAnalysis = vi.fn(
     async () => output,
   ) as unknown as DirectAnalysis["runDirectAnalysis"];
-  registerCoreBinaryCommands(cli, logger, runDirectAnalysis);
+  registerCoreBinaryCommands(cli, logger, runDirectAnalysis, {});
   const command = commands.get(CLI_COMMANDS.inspectCythonExtension);
   if (command === undefined)
     throw new Error("Cython extension CLI command was not registered");
@@ -170,7 +170,7 @@ it("executes Cython inspection through the one-shot CLI lifecycle", async () => 
       return cli;
     },
   } as unknown as CliInstance;
-  registerCoreBinaryCommands(cli, logger, runDirectAnalysis);
+  registerCoreBinaryCommands(cli, logger, runDirectAnalysis, {});
   const command = commands.get(CLI_COMMANDS.inspectCythonExtension);
   if (command === undefined)
     throw new Error("Cython command was not registered");

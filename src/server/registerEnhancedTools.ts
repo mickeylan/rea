@@ -37,6 +37,7 @@ import { executeFunctionAnalysisEvidence } from "../application/FunctionAnalysis
 import { CythonExtensionInspectionService } from "../application/cython/CythonExtensionInspectionService.js";
 import type { WithAdmittedAnalysis } from "./analysisAdmission.js";
 import type { EvidenceLookup } from "../application/EvidenceInputResolver.js";
+import { retainAnalysisResultSources } from "../application/investigation/recordEvidenceSources.js";
 import {
   requireAnalysisViewRetention,
   summarizeRetainedAnalysis,
@@ -289,7 +290,7 @@ const executeEnhancedTool = async (
             progress,
           }),
       };
-      const result = await logToolExecution(registration.logger, name, () =>
+      let result = await logToolExecution(registration.logger, name, () =>
         executeComposedWorkflow(
           analysis,
           (observed) =>
@@ -299,6 +300,11 @@ const executeEnhancedTool = async (
             ),
           composedLimitationBudget(name),
         ),
+      );
+      result = retainAnalysisResultSources(
+        name,
+        registration.recordEvidence,
+        result,
       );
       await reportOperationEnd(progress, name, result.ok);
       if (result.ok) {
@@ -422,7 +428,7 @@ const deliverFunctionAnalysis = async (
   },
 ): Promise<CallToolResult> => {
   const { detail, parameters, context, progress } = request;
-  const result = await logToolExecution(
+  let result = await logToolExecution(
     registration.logger,
     "analyze_function",
     () =>
@@ -435,6 +441,11 @@ const deliverFunctionAnalysis = async (
           progress,
         },
       ),
+  );
+  result = retainAnalysisResultSources(
+    "analyze_function",
+    registration.recordEvidence,
+    result,
   );
   await reportOperationEnd(progress, "analyze_function", result.ok);
   if (!result.ok)
@@ -519,6 +530,7 @@ const executeCythonInspectionTool = async (
     const workflowRecord = workflowSnapshotRecord(
       evidence,
       "inspect_cython_extension",
+      registration.analysisProfile?.("inspect_cython_extension"),
     );
     if (workflowRecord !== undefined) {
       const snapshot = registration.recordWorkflowSnapshot?.(workflowRecord);

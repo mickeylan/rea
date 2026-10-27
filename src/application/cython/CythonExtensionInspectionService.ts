@@ -25,12 +25,12 @@ import {
   type EvidenceSubjectTarget,
 } from "../../domain/evidence.js";
 import { err, ok, type Result } from "../../domain/result.js";
-import { addressedValue } from "../../contracts/toolOutputSchemaPrimitives.js";
+import { addressedValueSchema } from "../../domain/native/nativeInventory.js";
 import { REA_WORKFLOW_PROVIDER } from "../../domain/investigationProviders.js";
 import { workflowAnalysisProfile } from "../WorkflowAnalysisProfile.js";
 
 const OPERATION = "inspect_cython_extension";
-const inventorySchema = z.array(addressedValue);
+const inventorySchema = z.array(addressedValueSchema);
 
 /** Compose complete native inventories into one conservative extension observation. */
 export class CythonExtensionInspectionService {
@@ -52,7 +52,7 @@ export class CythonExtensionInspectionService {
     if (!names.ok) return names;
     const namesSubject = validateSubject(
       "list_names",
-      namesExecution.value.subject,
+      namesExecution.value.subject ?? null,
       target,
     );
     if (!namesSubject.ok) return namesSubject;
@@ -72,7 +72,7 @@ export class CythonExtensionInspectionService {
     if (!strings.ok) return strings;
     const stringsSubject = validateSubject(
       "list_strings",
-      stringsExecution.value.subject,
+      stringsExecution.value.subject ?? null,
       target,
     );
     if (!stringsSubject.ok) return stringsSubject;

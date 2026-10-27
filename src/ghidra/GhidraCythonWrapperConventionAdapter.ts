@@ -10,7 +10,7 @@ import {
   cythonWrapperConventionObservationSchema,
   type CythonWrapperConventionObservation,
 } from "../domain/cythonExtension.js";
-import { functionDossierSchema } from "../domain/hopperValues.js";
+import { functionDossierSchema } from "../domain/native/functionDossier.js";
 import { err, ok, type Result } from "../domain/result.js";
 
 const OPERATION = "inspect_cython_wrapper_convention";
