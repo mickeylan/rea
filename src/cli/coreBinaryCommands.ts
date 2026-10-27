@@ -569,7 +569,7 @@ const registerCythonExtensionCommand = (
           "inspect_cython_extension",
           {},
           directAnalysisOptionsFromCli(logger, options),
-        ),
+        ).then(projectCliAnalysisResult),
       ),
   });
 };

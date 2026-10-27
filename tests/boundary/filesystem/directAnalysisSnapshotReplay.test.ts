@@ -616,7 +616,7 @@ it("records and replays Cython extension workflow Evidence", async () => {
       "inspect_cython_extension",
       {},
       options,
-    ),
+    ).then(projectCliAnalysisResult),
   );
   expect(first).toMatchObject({
     operation: "inspect_cython_extension",
@@ -647,7 +647,7 @@ it("records and replays Cython extension workflow Evidence", async () => {
     "inspect_cython_extension",
     {},
     options,
-  );
+  ).then(projectCliAnalysisResult);
 
   expect(replayed).toEqual(first);
   expect(fixture.starts).toEqual(starts);

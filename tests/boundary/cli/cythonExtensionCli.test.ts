@@ -49,7 +49,7 @@ it("dispatches Cython extension inspection with exact native-open choices", asyn
   const logger = pino({ enabled: false });
   const output = { observed: true };
   const runDirectAnalysis = vi.fn(
-    async () => output,
+    async () => ok(output),
   ) as unknown as DirectAnalysis["runDirectAnalysis"];
   registerCoreBinaryCommands(cli, logger, runDirectAnalysis, {});
   const command = commands.get(CLI_COMMANDS.inspectCythonExtension);
