@@ -19,4 +19,10 @@ export const binaryTargetSummary = (target: BinaryTarget) =>
           managed: target.managed,
         }
       : {}),
+    ...(target.format === "esp-flash-image"
+      ? {
+          flash_offset: target.espFlash.flashOffset,
+          partition_table_offset: target.espFlash.partitionTableOffset,
+        }
+      : {}),
   });
