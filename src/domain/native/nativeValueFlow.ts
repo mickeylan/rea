@@ -64,7 +64,11 @@ export const availableNativeValueFlowSchema = z.strictObject({
   operations: z.array(nativePcodeOperationSchema),
   blocks: z.array(nativePcodeBlockSchema),
   def_use: z.array(nativePcodeDefUseSchema),
-  effects: z.array(nativePcodeEffectSchema),
+  effects: z
+    .array(nativePcodeEffectSchema)
+    .describe(
+      "Observed p-code effects. Memory reads and writes cover LOAD and STORE operations only; direct memory address varnodes in other operations are excluded. An empty list does not establish no memory access.",
+    ),
   parameters: z.array(
     z.strictObject({
       ordinal: z.int().nonnegative(),
