@@ -502,7 +502,7 @@ Add-Content -Path $profilePath -Value $envContent
 ## 参考链接
 
 - [REA 官方文档](https://rea.tools/)
-- [REA Windows Ghidra 配置](./windows-ghidra-p0.md)
+- [REA Windows Ghidra 配置](./providers/windows-ghidra-p0.md)
 - [Ghidra 下载](https://github.com/NationalSecurityAgency/ghidra/releases)
 - [Cython 官方文档](https://cython.readthedocs.io/)
 

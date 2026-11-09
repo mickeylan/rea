@@ -328,4 +328,4 @@ rea providers --json
 - [Windows REA/Ghidra 故障排除](rea-windows-troubleshooting.md)
 - [Windows Ghidra P0 正式边界](windows-ghidra-p0.md)
 - [Ghidra provider 语义](ghidra-provider.md)
-- [Native binary investigation](native-investigation.md)
+- [Native binary investigation](../guides/native/native-investigation.md)

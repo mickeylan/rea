@@ -325,8 +325,8 @@ rea doctor --provider ghidra --json
 
 ## 相关文档
 
-- [完整安装与 setup 参考](installation.md)
+- [完整安装与 setup 参考](../getting-started/installation.md)
 - [REA + Ghidra Windows 配置与排错](rea-windows-ghidra-setup.md)
 - [Windows Ghidra P0 的正式边界](windows-ghidra-p0.md)
-- [CLI 参考](cli.md)
-- [MCP contracts](mcp-contracts.md)
+- [CLI 参考](../getting-started/cli.md)
+- [MCP contracts](../reference/mcp-contracts.md)

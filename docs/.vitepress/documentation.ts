@@ -294,6 +294,21 @@ export const documentationSections = [
         route: "/windows-ghidra-p0",
       },
       {
+        text: "Windows REA installation",
+        source: "providers/rea-windows-installation.md",
+        route: "/rea-windows-installation",
+      },
+      {
+        text: "Windows Ghidra setup",
+        source: "providers/rea-windows-ghidra-setup.md",
+        route: "/rea-windows-ghidra-setup",
+      },
+      {
+        text: "Windows REA and Ghidra troubleshooting",
+        source: "providers/rea-windows-troubleshooting.md",
+        route: "/rea-windows-troubleshooting",
+      },
+      {
         text: "Headerless raw-binary analysis with Ghidra",
         source: "providers/raw-binary.md",
         route: "/raw-binary",

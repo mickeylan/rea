@@ -450,5 +450,5 @@ unreadable_output？
 - [Windows 安装与配置 REA](rea-windows-installation.md)
 - [Windows 配置 REA + Ghidra](rea-windows-ghidra-setup.md)
 - [Windows Ghidra P0 正式边界](windows-ghidra-p0.md)
-- [完整安装参考](installation.md)
-- [Issue reporting guidance](../CONTRIBUTING.md#reporting-issues)
+- [完整安装参考](../getting-started/installation.md)
+- [Issue reporting guidance](../../CONTRIBUTING.md#reporting-issues)
