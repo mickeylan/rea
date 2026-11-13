@@ -26,7 +26,7 @@ import { createTestTempDirectory } from "../../../tests/fixtures/temporaryDirect
 import { ArtifactFileCleanupFailure } from "../../artifacts/ArtifactFileOperation.js";
 import { writeJsonOutput } from "../../cli/jsonOutput.js";
 import { projectAnalysisError } from "../../domain/analysisErrorProjection.js";
-import { analysisViewRequestSchema } from "../../domain/analysisView/analysisView.js";
+import { analysisViewRequestSchema } from "../../domain/analysisView/analysisViewRequest.js";
 import { summarizeEnvironmentCoverage } from "../../domain/analysisView/environmentCoverageView.js";
 import type { Evidence } from "../../domain/evidence.js";
 import { inspectAnalysisViewValidated } from "../analysisView/AnalysisViewService.js";
@@ -736,7 +736,9 @@ describe("buildEnvironment dry-run package tarball", () => {
         code: "invalid_request",
         details: { issues: [{ path: ["package_tarball"] }] },
       });
-      expect(await readdir(root)).not.toContain("bundle");
+      await expect(readdir(input.directory!)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     } finally {
       read.mockRestore();
     }

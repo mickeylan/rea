@@ -186,7 +186,6 @@ const procedureInfo = procedureInfoSchema
       });
   });
 
-
 const dossierReferenceEdge =
   functionDossierSchema.shape.incoming_references.element.extend({
     source_address: nativeAddressObservationSchema,
@@ -197,7 +196,7 @@ const dossierReferenceEdge =
   });
 
 const ghidraFunctionDossier = functionDossierSchema
-  .extend({
+  .safeExtend({
     procedure: dossierProcedureIdentity.safeExtend({
       signature: functionDossierSchema.shape.procedure.shape.signature,
       locals: z.array(localVariable),
@@ -268,15 +267,6 @@ const ghidraFunctionDossier = functionDossierSchema
   })
   .strict()
   .superRefine((value, context) => {
-    if (
-      (value.swift_string_literals === undefined) !==
-      (value.swift_string_literal_omissions === undefined)
-    )
-      context.addIssue({
-        code: "custom",
-        message:
-          "Ghidra dossier must record Swift literals and their omissions together",
-      });
     if (
       !value.limitations.some((item) => /indirect|computed/u.test(item)) ||
       !value.limitations.some((item) => /provider|Ghidra|Hopper/u.test(item))

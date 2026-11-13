@@ -38,8 +38,9 @@ export const workflowAnalysisProfileParameters = (
           ? { workflow_revision: 3 }
           : operation === "inspect_cython_extension"
             ? { workflow_revision: 2 }
-            : operation === "trace_call_path" ||
-                operation === "trace_native_values"
-              ? { workflow_revision: 2 }
-              : { workflow_revision: 1 }),
+            : operation === "trace_native_values"
+              ? { workflow_revision: 3 }
+              : operation === "trace_call_path"
+                ? { workflow_revision: 2 }
+                : { workflow_revision: 1 }),
 });
